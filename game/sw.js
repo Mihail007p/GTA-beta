@@ -2,17 +2,17 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
   // Не запрашиваем саму папку: Raw.githack отдаёт только конкретные файлы.
   './index.html', './css/style.css', './manifest.json',
-  './icons/icon-192.png', './icons/icon-512.png', './vendor/three.js',
+  './icons/icon-192.png', './icons/icon-512.png', './vendor/three.js', './vendor/THREE-LICENSE.txt',
   './js/main.js', './js/config.js', './js/rng.js', './js/city.js', './js/car-physics.js', './js/cars.js',
   './js/collision.js', './js/traffic.js', './js/gameplay.js', './js/save.js', './js/textures.js',
   './js/car-model.js', './js/renderer.js', './js/audio.js', './js/input.js', './js/ui.js', './js/traffic-types.js',
-  './js/characters.js', './js/pedestrian.js', './js/foot-input.js', './js/hero-model.js',
+  './js/characters.js', './js/pedestrian.js', './js/vehicles.js', './js/foot-input.js', './js/hero-model.js',
   './vendor/GLTFLoader.js', './vendor/BufferGeometryUtils.js', './vendor/meshopt_decoder.module.js',
   // модели (~3.4 МБ): машины гаража и трафик — чтобы гараж работал и без интернета
   './assets/cars/cayenne.glb', './assets/cars/gt3.glb', './assets/cars/f458.glb', './assets/cars/cgt.glb',

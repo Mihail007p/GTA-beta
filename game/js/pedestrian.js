@@ -1,4 +1,4 @@
-// Пешее движение и безопасный вход/выход из СВОЕЙ машины. Чистая логика —
+// Пешее движение и безопасный вход/выход из машины. Чистая логика —
 // не зависит от DOM/Three и проверяется отдельными тестами.
 import { circleVsAABBs, isOnRoad } from './city.js';
 import { dampAngle } from './car-physics.js';
@@ -24,36 +24,42 @@ export function circleVsCar(x, z, radius, car, length, width) {
   return { depth: hit.depth, nx: hit.nx * c - hit.nz * s, nz: hit.nx * s + hit.nz * c };
 }
 
-function blockedAt(x, z, hash, traffic) {
+function blockedAt(x, z, hash, traffic, ignore) {
   hash.query(x, z, HERO_RADIUS + 0.1, candidates);
   if (circleVsAABBs(x, z, HERO_RADIUS, candidates)) return true;
-  return !!(traffic && traffic.cars.some(c => c.alive &&
-    circleVsCar(x, z, HERO_RADIUS + 0.25, { ...c, heading: c.visHeading ?? c.heading }, (c.half || 1) * 2 + 1.9, 1.9)));
+  return !!(traffic && traffic.cars.some(c => c.alive && c !== ignore && !c.playerControlled &&
+    circleVsCar(x, z, HERO_RADIUS + 0.25, { ...c, heading: c.visHeading ?? c.heading },
+      c.length || (c.half || 1) * 2 + 1.9, c.width || 1.9)));
 }
 
-/** Сначала водительская сторона; если она занята, ищем безопасное место вокруг. */
-export function findExitSpot(car, def, hash, traffic) {
+/** Сначала водительская сторона; при prefer выбираем ближайший безопасный выход. */
+export function findExitSpot(car, def, hash, traffic, ignore = null, prefer = null) {
   const length = def.length || 4.4, width = def.width || 1.9;
   const c = Math.cos(car.heading), s = Math.sin(car.heading);
   const side = width / 2 + HERO_RADIUS + 0.32;
+  let best = null, bestDistance = Infinity;
   for (const [f, r] of [[0.25, -side], [0.25, side], [-1, -side], [-1, side],
     [length / 2 + HERO_RADIUS + 0.35, 0], [-length / 2 - HERO_RADIUS - 0.35, 0]]) {
     const x = car.x + c * f - s * r, z = car.z + s * f + c * r;
-    if (!blockedAt(x, z, hash, traffic) && !circleVsCar(x, z, HERO_RADIUS, car, length, width))
-      return { x, z, heading: car.heading };
+    if (blockedAt(x, z, hash, traffic, ignore) || circleVsCar(x, z, HERO_RADIUS, car, length, width)) continue;
+    const spot = { x, z, heading: car.heading };
+    if (!prefer) return spot;
+    const d = Math.hypot(x - prefer.x, z - prefer.z);
+    if (d < bestDistance) { best = spot; bestDistance = d; }
   }
-  return null;
+  return best;
 }
 
-/** Сесть можно рядом с кузовом, не только с одной идеально точной точки. */
-export function canEnterCar(hero, car, def) {
+/** Расстояние до ближайшей точки кузова, а не до центра автомобиля. */
+export function carEntryDistance(hero, car, def) {
   const c = Math.cos(car.heading), s = Math.sin(car.heading);
   const dx = hero.x - car.x, dz = hero.z - car.z;
   const f = Math.abs(dx * c + dz * s), r = Math.abs(-dx * s + dz * c);
   const a = Math.max(0, f - (def.length || 4.4) / 2);
   const b = Math.max(0, r - (def.width || 1.9) / 2);
-  return Math.hypot(a, b) <= 1.65;
+  return Math.hypot(a, b);
 }
+export function canEnterCar(hero, car, def) { return carEntryDistance(hero, car, def) <= 1.65; }
 
 export function carIsStopped(car) {
   return Math.hypot(car.vx, car.vz) <= MAX_EXIT_SPEED && Math.abs(car.yawRate || 0) <= 0.3;
@@ -98,9 +104,10 @@ export function stepPedestrian(hero, input, dt, city, hash, car, def, traffic) {
       if (hit) { resolve(hero, hit); continue; }
       if (traffic) {
         for (const t of traffic.cars) {
-          if (!t.alive || Math.abs(t.x - hero.x) > 6 || Math.abs(t.z - hero.z) > 6) continue;
+          // Текущая машина проверяется выше, даже если она представлена инстансом трафика.
+          if (!t.alive || t.playerControlled || Math.abs(t.x - hero.x) > 6 || Math.abs(t.z - hero.z) > 6) continue;
           const pose = { x: t.x, z: t.z, heading: t.visHeading ?? t.heading };
-          hit = circleVsCar(hero.x, hero.z, HERO_RADIUS, pose, (t.half || 1) * 2 + 1.9, 1.9);
+          hit = circleVsCar(hero.x, hero.z, HERO_RADIUS, pose, t.length || (t.half || 1) * 2 + 1.9, t.width || 1.9);
           if (hit) { resolve(hero, hit); break; }
         }
       }

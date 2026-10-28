@@ -11,7 +11,10 @@ await page.goto('http://localhost:8080/?shot');
 await page.waitForFunction(() => window.__game && window.__game.state === 'menu', null, { timeout: 60000 });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const tap = async (sel) => { const b = await page.locator(sel).boundingBox(); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); };
-await tap('#btn-play'); await sleep(500);
+await tap('#btn-play');
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await tap('#vehicle-action');
+await page.waitForFunction(() => !__game.onFoot);
 const fr0 = await page.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(f); else res(n); }; requestAnimationFrame(f); }));
 console.log('кадров за 1 с после старта:', fr0);
 

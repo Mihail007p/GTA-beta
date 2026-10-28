@@ -134,3 +134,62 @@ export async function createHero(def) {
     },
   };
 }
+
+/**
+ * Один временный водитель использует те же геометрию/текстуры, что и герой:
+ * отдельны лишь скелет, mixer и материал одежды. Алгоритм переназначения
+ * костей адаптирован из three.js SkeletonUtils.clone (MIT, three.js authors;
+ * полный текст лицензии: vendor/THREE-LICENSE.txt).
+ */
+export function cloneHeroForDriver(source) {
+  const originalByClone = new Map(), cloneByOriginal = new Map();
+  const root = source.root.clone(true);
+  const pair = (a, b) => {
+    originalByClone.set(b, a); cloneByOriginal.set(a, b);
+    for (let i = 0; i < a.children.length; i++) pair(a.children[i], b.children[i]);
+  };
+  pair(source.root, root);
+  const ownedMaterials = [];
+  root.traverse(node => {
+    if (node.isSkinnedMesh) {
+      const original = originalByClone.get(node);
+      node.skeleton = original.skeleton.clone();
+      node.bindMatrix.copy(original.bindMatrix);
+      node.skeleton.bones = original.skeleton.bones.map(bone => cloneByOriginal.get(bone));
+      node.bind(node.skeleton, node.bindMatrix);
+    }
+    if (node.isMesh && /casualsuit/i.test(node.name)) {
+      const shade = material => {
+        const copy = material.clone();
+        copy.color.multiply(new THREE.Color(0x9ab4cc));
+        ownedMaterials.push(copy);
+        return copy;
+      };
+      node.material = Array.isArray(node.material) ? node.material.map(shade) : shade(node.material);
+    }
+  });
+  const model = root.children[0];
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = Object.fromEntries(Object.entries(source.actions).map(([name, action]) => [name, mixer.clipAction(action.getClip())]));
+  actions.walk.play();
+  let active = 'walk';
+  return {
+    root,
+    update(dt, speed, running) {
+      const next = speed < 0.16 ? 'idle' : running ? 'run' : 'walk';
+      if (next !== active) {
+        actions[active].fadeOut(0.15);
+        actions[next].reset().fadeIn(0.15).play();
+        active = next;
+      }
+      mixer.timeScale = next === 'run' ? THREE.MathUtils.clamp(speed / 4.1, 0.72, 1.25) : 1;
+      mixer.update(dt);
+    },
+    dispose() {
+      mixer.stopAllAction();
+      root.traverse(node => { if (node.isSkinnedMesh) node.skeleton.dispose(); });
+      for (const material of ownedMaterials) material.dispose();
+      // Общие геометрии и текстуры принадлежат source и здесь не освобождаются.
+    },
+  };
+}

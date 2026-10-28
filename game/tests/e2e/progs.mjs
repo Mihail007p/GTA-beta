@@ -6,6 +6,9 @@ await page.waitForFunction(() => window.__game && window.__game.state === 'menu'
 const progs = () => page.evaluate(() => window.__game.R.renderer.info.programs.map(p => p.name + ':' + p.id));
 const a = await progs();
 await page.click('#btn-play');
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await page.keyboard.press('KeyE');
+await page.waitForFunction(() => !__game.onFoot);
 await page.keyboard.down('ArrowUp'); await new Promise(r => setTimeout(r, 5000));
 const b = await progs();
 await page.keyboard.down('ArrowRight'); await page.keyboard.down('Space'); await new Promise(r => setTimeout(r, 3000));

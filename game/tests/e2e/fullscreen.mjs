@@ -39,8 +39,8 @@ check('кнопка «На весь экран» видна только ког�
 // выход из полного экрана во время езды → пауза; ПРОДОЛЖИТЬ → снова полный экран
 await tap('#btn-play');
 await sleep(800);
-const s1 = await page.evaluate(() => ({ state: window.__game.state, fs: !!document.fullscreenElement, calls: window.__fs.length, btn: !document.getElementById('btn-fs').classList.contains('hidden') }));
-check('ЕХАТЬ → езда, кнопка «На весь экран» в езде скрыта', s1.state === 'play' && !s1.btn, JSON.stringify(s1));
+const s1 = await page.evaluate(() => ({ state: window.__game.state, onFoot: __game.onFoot, fs: !!document.fullscreenElement, calls: window.__fs.length, btn: !document.getElementById('btn-fs').classList.contains('hidden'), hud: !document.getElementById('hud-fs').classList.contains('hidden') }));
+check('ИГРАТЬ → пеший старт, кнопка полного экрана доступна в окне', s1.state === 'play' && s1.onFoot && !s1.btn && s1.hud === !s1.fs, JSON.stringify(s1));
 if (s1.fs) {
   await page.evaluate(() => document.exitFullscreen());
   await page.waitForFunction(() => !document.fullscreenElement && window.__game.state !== 'play', null, { timeout: 4000 }).catch(() => {});

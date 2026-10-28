@@ -96,7 +96,13 @@ try {
   note('выбранный герой и старый прогресс переживают перезагрузку');
 
   await tap('#btn-play');
-  await wait(() => __game.state === 'play' && !__game.onFoot);
+  await wait(() => __game.state === 'play' && __game.onFoot && __game.R.heroActor?.root.visible);
+  const spawn = await snapshot();
+  assert.ok(Math.hypot(spawn.x - spawn.carX, spawn.z - spawn.carZ) < 4);
+  assert.equal(await page.locator('[data-foot="stick"]').isVisible(), true);
+  note('новый запуск начинается пешком рядом с собственной машиной');
+  await tap('#vehicle-action');
+  await wait(() => !__game.onFoot);
   // Синхронно: не даём физике затормозить до проверки.
   const blocked = await page.evaluate(() => {
     Object.assign(__game.car, { vx: 2, vz: 0, speed: 2 });
@@ -252,9 +258,7 @@ try {
   await tap('#character-action');
   await tap('#character-back');
   await tap('#btn-play');
-  await wait(() => __game.state === 'play' && __game.R.heroId === 'hero-1');
-  await tap('#vehicle-action');
-  await wait(() => __game.onFoot && __game.R.heroActor.root.visible);
+  await wait(() => __game.state === 'play' && __game.R.heroId === 'hero-1' && __game.onFoot && __game.R.heroActor.root.visible);
   assert.equal((await snapshot()).chosen, 'hero-1');
   note('без сети загружаются игра, другая модель героя, движения и пеший режим');
 

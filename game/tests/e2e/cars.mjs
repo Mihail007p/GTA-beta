@@ -59,6 +59,10 @@ for (const id of ids) {
   // игровая камера: старт, газ 2.5 с, лёгкий поворот
   await page.evaluate(() => { window.__game.R.orbit = null; });
   await page.evaluate(() => document.getElementById('btn-play').click());
+  if (await page.evaluate(() => __game.onFoot)) {
+    await page.keyboard.press('KeyE');
+    await page.waitForFunction(() => !__game.onFoot);
+  }
   // каждая машина стартует с одной точки (иначе 2–4-я упирались в дом после предыдущей)
   await page.evaluate(() => { const c = window.__game.car; c.x = -10.5; c.z = 6; c.heading = Math.PI / 2; c.vx = 0; c.vz = 0; c.speed = 0; c.yawRate = 0; c.lateral = 0; window.__game.R._camInit = false; });
   await sleep(500);

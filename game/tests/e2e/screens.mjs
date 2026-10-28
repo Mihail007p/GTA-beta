@@ -30,12 +30,8 @@ await tap('#btn-garage'); await sleep(500);
 console.log('гараж:', await fits(['#garage-back', '#car-action', '#car-next']));
 await page.screenshot({ path: OUT + 'h304_garage.png' });
 await tap('#garage-back');
-await tap('#btn-play'); await sleep(800);
-console.log('HUD:', await fits(['#btn-pause', '#btn-reset', '#vehicle-action', '[data-btn="gas"]', '[data-btn="brake"]', '[data-btn="hand"]']));
-await page.screenshot({ path: OUT + 'h304_play.png' });
-await page.waitForFunction(() => __game.R.heroId === __game.save.selectedCharacter, null, { timeout: 60000 });
-await tap('#vehicle-action');
-await page.waitForFunction(() => __game.onFoot, null, { timeout: 30000 });
+await tap('#btn-play');
+await page.waitForFunction(() => __game.onFoot && __game.R.heroVisible, null, { timeout: 60000 });
 const footControls = ['#btn-pause', '#btn-reset', '#vehicle-action', '[data-foot="run"]'];
 console.log('пешком:', await fits(footControls));
 for (const selector of footControls) {
@@ -43,6 +39,15 @@ for (const selector of footControls) {
   assert.ok(b && b.y >= 0 && b.y + b.height <= 304, `${selector} не помещается на экран`);
 }
 await page.screenshot({ path: OUT + 'h304_onfoot.png' });
+await tap('#vehicle-action');
+await page.waitForFunction(() => !__game.onFoot, null, { timeout: 30000 });
+const carControls = ['#btn-pause', '#btn-reset', '#vehicle-action', '[data-btn="gas"]', '[data-btn="brake"]', '[data-btn="hand"]'];
+console.log('HUD в машине:', await fits(carControls));
+for (const selector of carControls) {
+  const b = await page.locator(selector).boundingBox();
+  assert.ok(b && b.y >= 0 && b.y + b.height <= 304, `${selector} не помещается на экран`);
+}
+await page.screenshot({ path: OUT + 'h304_play.png' });
 await tap('#btn-pause');
 const pauseBtns = await page.$$eval('#pause button', bs => bs.map(b => '#' + b.id));
 console.log('пауза:', await fits(pauseBtns));

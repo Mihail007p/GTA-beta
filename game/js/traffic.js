@@ -41,7 +41,7 @@ export function makeTraffic(city, count, rngSeed) {
       half: trafficHalf(trafficTypeIndex(i)),
       alive: false,
       plan: null,
-      stunned: 0,
+      stunned: 0, yieldT: 0,
       _nearT: 0, _hitT: 0,
     });
   }
@@ -64,6 +64,7 @@ function placeAt(c, city, axis, roadIdx, s, dir, cfg, rng) {
   c.alive = true;
   c.plan = null;
   c.stunned = 0;
+  c.yieldT = 0;
   c._nearT = 0;
   c._hitT = 0;
   c.spawnCount = (c.spawnCount || 0) + 1;
@@ -130,6 +131,8 @@ function respawn(traffic, c, city, player, cfg, minR, maxR, parkedCar = null) {
 export function scatterTraffic(traffic, city, player, cfg) {
   for (const c of traffic.cars) {
     c.alive = false;
+    c.playerControlled = false;
+    c.parked = false;
   }
   for (const c of traffic.cars) {
     // на старте можно и впереди, но не вплотную к игроку
@@ -217,7 +220,15 @@ export function stepTraffic(traffic, city, dt, cfg, player, parkedCar = null) {
 
   for (let i = 0; i < cars.length; i++) {
     const c = cars[i];
-    if (!c.alive) continue;
+    if (!c.alive || c.playerControlled) continue;
+    if (c.parked) {
+      // Оставленные угнанные авто остаются рядом; вдали могут снова стать
+      // обычным трафиком, чтобы не накапливать объекты и не опустошать город.
+      const d2 = (c.x - player.x) ** 2 + (c.z - player.z) ** 2;
+      if (!c.noRender && d2 > cfg.respawnDist ** 2 &&
+          respawn(traffic, c, city, player, cfg, 70, cfg.respawnDist * 0.92, parkedCar)) c.parked = false;
+      continue;
+    }
 
     // --- целевая скорость ------------------------------------------------
     let target = c.cruise;
@@ -229,20 +240,30 @@ export function stepTraffic(traffic, city, dt, cfg, player, parkedCar = null) {
     // Реагируем и на героя, и на оставленную им машину. Когда игрок за
     // рулём, второй объект отсутствует — прежнее поведение не меняется.
     const fwdX = Math.cos(c.heading), fwdZ = Math.sin(c.heading);
-    for (const obstacle of obstacles) {
+    const avoid = obstacle => {
       const pdx = obstacle.x - c.x, pdz = obstacle.z - c.z;
       const pd2 = pdx * pdx + pdz * pdz;
-      if (pd2 >= cfg.avoidDist * cfg.avoidDist) continue;
+      if (pd2 >= cfg.avoidDist * cfg.avoidDist) return;
       const ahead = pdx * fwdX + pdz * fwdZ;
       const side = Math.abs(-pdx * fwdZ + pdz * fwdX);
-      if (ahead > 0 && side < 3.2) target = Math.min(target, Math.max(0, (ahead - 6) * 0.6));
+      if (ahead > 0 && side < 3.2) {
+        target = Math.min(target, Math.max(0, (ahead - 6) * 0.6));
+        // Водитель даёт пешеходу время подойти к двери после остановки,
+        // а не трогается в ту же секунду, как тот вышел из полосы.
+        if (obstacle === player && player.camYaw !== undefined && ahead < 10) c.yieldT = 4;
+      }
+    };
+    for (const obstacle of obstacles) avoid(obstacle);
+    for (const obstacle of cars) {
+      if (obstacle !== c && obstacle.alive && (obstacle.parked || obstacle.playerControlled)) avoid(obstacle);
     }
+    if (c.yieldT > 0) { c.yieldT -= dt; target = 0; }
 
     // дистанция до машины впереди в той же полосе
     for (let j = 0; j < cars.length; j++) {
       if (j === i) continue;
       const o = cars[j];
-      if (!o.alive || o.axis !== c.axis || o.dir !== c.dir) continue;
+      if (!o.alive || o.parked || o.playerControlled || o.axis !== c.axis || o.dir !== c.dir) continue;
       if (Math.abs(o.lane - c.lane) > 1.2) continue;
       const gap = (o.s - c.s) * c.dir;
       if (gap <= 0 || gap > 16) continue;
@@ -314,12 +335,11 @@ export function trafficCollisions(traffic, centers, playerRadius, out) {
   const res = out || [];
   res.length = 0;
   const cars = traffic.cars;
-  const tr = 0.95;          // радиус круга машины трафика
   const half0 = 1.0;        // смещение кругов от центра вдоль кузова (по умолчанию)
-  const rSum = playerRadius + tr;
   for (let i = 0; i < cars.length; i++) {
     const c = cars[i];
-    if (!c.alive) continue;
+    if (!c.alive || c.playerControlled) continue;
+    const rSum = playerRadius + (c.radius || 0.95);
     // быстрый отсев
     const qx = centers[0].x - c.x, qz = centers[0].z - c.z;
     if (qx * qx + qz * qz > 64) continue;
@@ -345,6 +365,8 @@ export function trafficCollisions(traffic, centers, playerRadius, out) {
 
 /** Реакция машины трафика на удар игрока: встаёт и чуть сдвигается по полосе */
 export function knockTraffic(c, nx, nz, impact) {
+  // Припаркованную машину не привязываем обратно к старой полосе трафика.
+  if (c.parked) { c._hitT = 2.0; return; }
   c.stunned = Math.max(c.stunned, 1.2 + Math.min(2.5, impact * 0.12));
   c.speed *= 0.3;
   c._hitT = 2.0;

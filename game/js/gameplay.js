@@ -185,7 +185,7 @@ export function updateGameplay(g, dt, car, trafficCars, impact = 0) {
     const nm2 = cfg.nearMissDist * cfg.nearMissDist;
     const exit2 = (cfg.nearMissDist + 1.2) * (cfg.nearMissDist + 1.2);
     for (const t of trafficCars) {
-      if (!t.alive) continue;
+      if (!t.alive || t.playerControlled) continue;
       const dx = car.x - t.x, dz = car.z - t.z;
       const d2 = dx * dx + dz * dz;
       if (d2 < nm2) {

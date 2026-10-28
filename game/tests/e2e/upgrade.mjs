@@ -73,8 +73,10 @@ try {
   await menu();
   await page.waitForFunction(() => __game.R.heroId === 'hero-1', null, { timeout: 90000 });
   await page.locator('#btn-play').click();
-  await page.waitForFunction(() => __game.state === 'play');
+  await page.waitForFunction(() => __game.state === 'play' && __game.onFoot && __game.R.heroActor.root.visible, null, { timeout: 30000 });
   const box = await page.locator('#vehicle-action').boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => !__game.onFoot, null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => __game.onFoot && __game.R.heroActor.root.visible, null, { timeout: 30000 });
   assert.equal(await page.evaluate(() => __game.save.money), 7500);

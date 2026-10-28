@@ -8,6 +8,9 @@ page.on('pageerror', e => console.log('[pageerror]', e.message));
 await page.goto('http://localhost:8080/?shot&noaudio');
 await page.waitForFunction(() => window.__game && window.__game.state === 'menu', null, { timeout: 120000 });
 await page.evaluate(() => document.getElementById('btn-play').click());
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await page.keyboard.press('KeyE');
+await page.waitForFunction(() => !__game.onFoot);
 await new Promise(r => setTimeout(r, 1500));
 const res = await page.evaluate(async (q) => {
   const G = window.__game, R = G.R;

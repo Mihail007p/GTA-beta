@@ -7,6 +7,9 @@ await page.goto('http://localhost:8080/?shot&noaudio');
 await page.waitForFunction(() => window.__game && window.__game.state === 'menu', null, { timeout: 60000 });
 await page.screenshot({ path: OUT + 'menu.png' });
 await page.click('#btn-play');
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await page.keyboard.press('KeyE');
+await page.waitForFunction(() => !__game.onFoot);
 await new Promise(r => setTimeout(r, 600));
 // машина у правой кромки дороги (x≈-1), смотрит на запад → камера за ней оказалась бы в доме (x>3)
 const r = await page.evaluate(async () => {

@@ -37,6 +37,9 @@ if (scenario === 'garage') {
   }
 } else if (scenario !== 'menu') {
   await page.click('#btn-play');
+  await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+  await page.keyboard.press('KeyE');
+  await page.waitForFunction(() => !__game.onFoot);
   await sleep(800);
   await page.screenshot({ path: OUT + 'play0.png' });
   await info('play0');

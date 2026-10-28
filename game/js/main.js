@@ -19,14 +19,16 @@ import { audio } from './audio.js';
 import { TouchInput } from './input.js';
 import { FootInput } from './foot-input.js';
 import { CHARACTERS } from './characters.js';
-import { makePedestrian, stepPedestrian, findExitSpot, canEnterCar, carIsStopped, stopParkedCar, circleVsCar, HERO_RADIUS } from './pedestrian.js';
+import { makePedestrian, stepPedestrian, findExitSpot, carIsStopped, stopParkedCar, circleVsCar, HERO_RADIUS } from './pedestrian.js';
+import { VehicleWorld } from './vehicles.js';
 import { UI } from './ui.js';
 
 const ui = new UI();
 let save = loadSave();
 let R = null, city, hash, traffic, input, footInput;
-let car, def, col, g, hero;
-let onFoot = false;
+let car, def, col, g, hero, vehicles;
+let onFoot = true;
+let pendingEntry = null, driverEvent = null;
 const previewHero = { x: 0, z: 0, y: 0, heading: 0.6, speed: 0, running: false };
 let state = 'loading';
 let garageReturn = 'menu';
@@ -103,7 +105,7 @@ async function boot() {
   ui.syncSettings(save);
   ui.setLoading(1, 'Готово');
   await nextFrame();
-  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get g() { return g; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
+  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get vehicles() { return vehicles; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get pendingEntry() { return pendingEntry; }, get g() { return g; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
   await waitStartTap();
   goMenu();
   lastNow = performance.now();
@@ -114,34 +116,47 @@ async function boot() {
 function newRun() {
   const s = city.start;
   const stats = car ? car.stats : undefined;
+  if (vehicles) vehicles.dispose();
+  if (R) R.clearDriver();
+  pendingEntry = driverEvent = null;
+  def = carById(save.activeCar) || CARS[0];
+  col = colliderOf(def);
   car = makeCarState(def, s.x, s.z, s.heading);
   if (stats) car.stats = stats;
-  hero = makePedestrian(s.x, s.z, s.heading);
-  onFoot = false;
-  ui.setOnFoot(false);
-  if (R) R.showHero(false);
-  if (input) input.setActive(true);
-  if (footInput) footInput.setActive(false);
+  vehicles = new VehicleWorld(traffic, car, def);
   g = makeGameplay(CONFIG.gameplay, city, (Date.now() & 0xffff) + 1, s);
   scatterTraffic(traffic, city, car, CONFIG.traffic);
+  // Игра начинается не внутри кузова: у героя есть безопасное место рядом.
+  const spot = findExitSpot(car, def, hash, traffic);
+  if (!spot) throw new Error('Не удалось найти безопасную стартовую позицию героя');
+  hero = makePedestrian(spot.x, spot.z, spot.heading);
+  hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
+  onFoot = true;
+  ui.setOnFoot(true);
+  if (R) R.showHero(false); // герой показывается после выхода из меню
+  if (input) input.setActive(false);
+  if (footInput) footInput.setActive(false);
   fx.lastDist = car.stats.distance;
   fx.prevSkid = [null, null];
   if (R) { R._camInit = false; R._camClip = 99; }
 }
 
 function setActiveCar(id, initial = false) {
-  def = carById(id) || CARS[0];
-  col = colliderOf(def);
-  R.setPlayerCar(def);
-  if (!initial && car) {
-    // та же точка и курс, скорость обнуляем
-    const stats = car.stats;
-    car = makeCarState(def, car.x, car.z, car.heading);
-    car.stats = stats;
-    if (onFoot && hero && circleVsCar(hero.x, hero.z, HERO_RADIUS, car, def.length || 4.4, def.width || 1.9)) {
-      const spot = findExitSpot(car, def, hash, traffic);
-      if (spot) { hero.x = spot.x; hero.z = spot.z; hero.vx = hero.vz = 0; }
-    }
+  const ownDef = carById(id) || CARS[0];
+  R.setPlayerCar(ownDef);
+  if (initial || !vehicles) {
+    def = ownDef; col = colliderOf(def);
+    return;
+  }
+  vehicles.setOwnedDef(ownDef);
+  if (vehicles.current === vehicles.own) {
+    car = vehicles.own.car; def = ownDef; col = colliderOf(def);
+  }
+  // При смене гаражной машины не оставляем стоящего рядом героя внутри кузова.
+  const own = vehicles.own.car;
+  if (onFoot && hero && circleVsCar(hero.x, hero.z, HERO_RADIUS, own, ownDef.length || 4.4, ownDef.width || 1.9)) {
+    const spot = findExitSpot(own, ownDef, hash, traffic, vehicles.ownProxy);
+    if (spot) { hero.x = spot.x; hero.z = spot.z; hero.vx = hero.vz = 0; }
   }
 }
 
@@ -167,13 +182,14 @@ function respawn() {
     z = na.c + dir * L; x = clamp(car.x, lo, hi); h = dir > 0 ? 0 : Math.PI;
   }
   for (let tries = 0; tries < 8; tries++) {
-    const busy = traffic.cars.some(c => c.alive && Math.hypot(c.x - x, c.z - z) < 8);
+    const busy = traffic.cars.some(c => c.alive && !c.playerControlled && Math.hypot(c.x - x, c.z - z) < 8);
     if (!busy) break;
     x -= Math.cos(h) * 9; z -= Math.sin(h) * 9;
   }
   const stats = car.stats;
-  car = makeCarState(def, x, z, h);
+  Object.assign(car, makeCarState(def, x, z, h));
   car.stats = stats;
+  vehicles.sync();
   fx.prevSkid = [null, null];
   fx.stuckT = 0;
   R._camInit = false;
@@ -183,6 +199,10 @@ function respawn() {
 // ---------------------------------------------------------------- ЭКРАНЫ --
 function goMenu() {
   state = 'menu';
+  // Если игрок вышел в меню во время короткого перехода, он остаётся пешком.
+  pendingEntry = driverEvent = null;
+  R.clearDriver();
+  if (R.playerDef !== vehicles.own.def) R.setPlayerCar(vehicles.own.def);
   R.orbit = { a: R.orbit ? R.orbit.a : 2.2, r: 7.2, h: 2.1, speed: 0.12 };
   R.showHero(false);
   if (R.playerMesh) R.playerMesh.visible = true;
@@ -198,6 +218,7 @@ function goMenu() {
 function goGarage() {
   garageReturn = state === 'pause' ? 'pause' : 'menu';
   state = 'garage';
+  if (R.playerDef !== vehicles.own.def) R.setPlayerCar(vehicles.own.def);
   R.orbit = { a: R.orbit ? R.orbit.a : 0.6, r: 6.3, h: 1.5, speed: 0.22, frameLeft: true, lookY: 0.62 };
   R.showHero(false);
   if (R.playerMesh) R.playerMesh.visible = true;
@@ -229,7 +250,7 @@ function previewCharacter(id) {
 }
 
 function leaveGarage() {
-  if (R.playerDef !== def) R.setPlayerCar(def);    // вернуть активную машину после просмотра
+  if (R.playerDef !== vehicles.own.def) R.setPlayerCar(vehicles.own.def); // вернуть свою машину после просмотра
   if (garageReturn === 'pause') goPause(); else goMenu();
 }
 
@@ -238,9 +259,10 @@ function goPlay() {
   R.orbit = null;
   R._camInit = false;
   if (R.playerMesh) R.playerMesh.visible = true;
-  input.setActive(!onFoot);
-  footInput.setActive(onFoot);
+  input.setActive(!onFoot && !pendingEntry);
+  footInput.setActive(onFoot && !pendingEntry);
   ui.setOnFoot(onFoot);
+  if (pendingEntry) ui.setVehicleAction('busy');
   R.showHero(onFoot && R.heroId === save.selectedCharacter);
   if (onFoot && R.heroId !== save.selectedCharacter) {
     ui.toast('Загружаем героя…');
@@ -265,20 +287,72 @@ function goPause() {
   flushNow();
 }
 
-// В этом этапе доступна только собственная машина. Действие на клавиатуре — E.
+function finishVehicleEntry() {
+  pendingEntry = null;
+  onFoot = false;
+  stopParkedCar(car);
+  vehicles.sync();
+  hero.vx = hero.vz = hero.speed = 0;
+  R.showHero(false);
+  input.setActive(state === 'play'); footInput.setActive(false);
+  ui.setOnFoot(false); ui.hint('');
+  R.driveLookYaw = 0; R.driveLookHeight = 0;
+  R._camInit = false; acc = 0;
+  ui.toast(vehicles.current.ref ? 'Машина под вашим управлением' : 'Вы в своей машине');
+}
+
+/** Короткая сцена: водитель покидает машину и убегает. Двери пока статичны. */
+function startDriverExit() {
+  const spot = findExitSpot(car, def, hash, traffic, vehicles.current.ref, hero);
+  if (!spot || !R.spawnDriver()) return false;
+  const heading = Math.atan2(spot.z - car.z, spot.x - car.x);
+  const driver = makePedestrian(car.x, car.z, heading);
+  driver.camYaw = heading;
+  driver.speed = 1.8;
+  driverEvent = { elapsed: 0, startX: car.x, startZ: car.z, spot, driver };
+  R.updateDriver(driver, 0);
+  return true;
+}
+
+function stepDriver(dt) {
+  if (!driverEvent) return;
+  if (!R.driverActor) { driverEvent = null; return; }
+  const event = driverEvent, driver = event.driver;
+  event.elapsed += dt;
+  if (event.elapsed < 0.85) {
+    const t = Math.min(1, event.elapsed / 0.85);
+    driver.x = event.startX + (event.spot.x - event.startX) * t;
+    driver.z = event.startZ + (event.spot.z - event.startZ) * t;
+    driver.y = isOnRoad(city, driver.x, driver.z) ? 0 : 0.16;
+    driver.speed = 1.8; driver.running = false;
+  } else {
+    stepPedestrian(driver, { x: 0, y: 1, run: true }, dt, city, hash, car, def, traffic);
+  }
+  R.updateDriver(driver, dt);
+  if (event.elapsed > 4.5) { R.clearDriver(); driverEvent = null; }
+}
+
+// Действие на клавиатуре — E, на телефоне — контекстная кнопка.
 function toggleVehicle() {
-  if (state !== 'play') return;
+  if (state !== 'play' || pendingEntry) return;
   if (onFoot) {
-    if (!canEnterCar(hero, car, def)) { ui.toast('Подойдите к своей машине'); return; }
-    onFoot = false;
-    stopParkedCar(car);
-    hero.vx = hero.vz = hero.speed = 0;
-    R.showHero(false);
-    input.setActive(true); footInput.setActive(false);
-    ui.setOnFoot(false); ui.hint('');
-    R.driveLookYaw = 0; R.driveLookHeight = 0;
-    R._camInit = false; acc = 0;
-    ui.toast('Вы в своей машине');
+    const target = vehicles.nearest(hero);
+    const result = vehicles.enter(target);
+    if (!result.ok) {
+      ui.toast(result.reason === 'too-fast'
+        ? 'Машина тормозит. Подойдите и нажмите ещё раз'
+        : 'Подойдите ближе к машине');
+      return;
+    }
+    car = vehicles.current.car; def = vehicles.current.def; col = colliderOf(def);
+    fx.prevSkid = [null, null]; fx.stuckT = 0; acc = 0;
+    if (result.occupied && startDriverExit()) {
+      pendingEntry = { elapsed: 0 };
+      hero.vx = hero.vz = hero.speed = 0;
+      footInput.setActive(false);
+      ui.setVehicleAction('busy');
+      ui.toast('Водитель выходит из машины');
+    } else finishVehicleEntry();
     return;
   }
   if (!carIsStopped(car)) { ui.toast('Сначала остановите машину'); return; }
@@ -287,9 +361,10 @@ function toggleVehicle() {
     R.setHero(save.selectedCharacter).then(ok => { if (!ok && state === 'play') ui.toast('Не удалось загрузить героя'); });
     return;
   }
-  const spot = findExitSpot(car, def, hash, traffic);
+  const spot = findExitSpot(car, def, hash, traffic, vehicles.current.ref);
   if (!spot) { ui.toast('Нет места для выхода — отъедьте от препятствия'); return; }
   stopParkedCar(car);
+  vehicles.sync();
   hero = makePedestrian(spot.x, spot.z, spot.heading);
   hero.camYaw = R.camYaw;
   hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
@@ -306,23 +381,30 @@ window.addEventListener('keydown', e => {
 
 // ----------------------------------------------------------- ПОЛНЫЙ ЭКРАН --
 // Браузер даёт полный экран только по жесту (для касаний — click/pointerup, не pointerdown).
-// Поэтому: экран «Нажмите, чтобы начать», повторный вход по ЕХАТЬ/ПРОДОЛЖИТЬ,
-// кнопка в углу меню и пауза, если полный экран сбросили (жест «назад»).
-// Ярлык на главном экране (PWA, display: fullscreen) открывается сразу без панелей.
+// Поэтому: первое касание, ИГРАТЬ/ПРОДОЛЖИТЬ и отдельная кнопка в HUD.
+// Браузер/оболочка могут отказать; в таком случае игра остаётся доступной в окне.
 const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
-const STANDALONE = matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches;
+const FULL_DISPLAY = matchMedia('(display-mode: fullscreen)').matches;
+const STANDALONE = FULL_DISPLAY || matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
 const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 let wasFullscreen = false;
 
-function enterFullscreen() {
-  if (SHOT || STANDALONE || !FS_OK) return;   // в автотестах headless-fullscreen тормозит кадры
+function enterFullscreen(explicit = false) {
+  if (SHOT) return;
+  if (FULL_DISPLAY) { lockLandscape(); return; } // установленное приложение уже полноэкранное
+  if (!FS_OK) {
+    if (explicit) ui.toast('Полный экран недоступен. Попробуйте Chrome или ярлык на главном экране');
+    return;
+  }
   if (!isFullscreen()) {
     const el = document.documentElement;
+    const denied = () => ui.toast('Браузер не разрешил полный экран. Попробуйте Chrome или ярлык игры');
     try {
       const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' })
         : el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : null;
-      if (p && p.then) p.then(lockLandscape, () => { /* не дали — играем так */ });
-    } catch (e) { /* не дали — играем так */ }
+      if (!el.requestFullscreen && !el.webkitRequestFullscreen) { if (explicit) denied(); }
+      else if (p && p.then) p.then(lockLandscape, denied);
+    } catch (e) { denied(); }
   } else lockLandscape();
 }
 
@@ -334,16 +416,19 @@ function lockLandscape() {
 
 function syncFsButton() {
   const btn = document.getElementById('btn-fs');
-  if (!btn) return;
+  const hud = document.getElementById('hud-fs');
+  if (!btn || !hud) return;
   const scr = ui && ui.screen;
-  const show = FS_OK && !STANDALONE && !SHOT && !isFullscreen() && (scr === 'menu' || scr === 'pause');
-  btn.classList.toggle('hidden', !show);
+  const available = !FULL_DISPLAY && !SHOT && !isFullscreen();
+  btn.classList.toggle('hidden', !(available && (scr === 'menu' || scr === 'pause')));
+  hud.classList.toggle('hidden', !(available && scr === 'play'));
 }
 
 function onFullscreenChange() {
   const fs = isFullscreen();
   if (wasFullscreen && !fs && state === 'play') goPause();   // случайный «назад» — пауза, а не езда в окне
   wasFullscreen = fs;
+  if (fs) lockLandscape();
   syncFsButton();
   setTimeout(resize, 120);
 }
@@ -384,7 +469,7 @@ function bindUi() {
     click: () => { ensureAudio(); audio.ui(); },
     getSave: () => save,
     play: () => { enterFullscreen(); goPlay(); },
-    fullscreen: () => enterFullscreen(),
+    fullscreen: () => enterFullscreen(true),
     garage: () => goGarage(),
     character: () => goCharacter(),
     characterBack: () => goMenu(),
@@ -404,7 +489,7 @@ function bindUi() {
     selectCar: (id) => {
       save.activeCar = id; markDirty(); flushNow();
       setActiveCar(id);
-      ui.toast('Выбрана: ' + def.name);
+      ui.toast('В гараже выбрана: ' + vehicles.own.def.name);
     },
     buyCar: (id) => {
       const d = carById(id);
@@ -451,7 +536,12 @@ function loop(now) {
 
 function frame(dt, now) {
   time += dt;
-  const playing = state === 'play', driving = playing && !onFoot;
+  const playing = state === 'play';
+  if (playing && pendingEntry) {
+    pendingEntry.elapsed += dt;
+    if (pendingEntry.elapsed >= 0.9) finishVehicleEntry();
+  }
+  const driving = playing && !onFoot;
   let frameImpact = 0, impVx = 0, impVz = 0;
   let inp = null;
 
@@ -474,7 +564,7 @@ function frame(dt, now) {
     }
     if (steps >= PH.maxStepsPerFrame) acc = 0;
     if (!isFinite(car.x) || !isFinite(car.z) || !isFinite(car.vx)) respawn();
-  } else if (playing && onFoot) {
+  } else if (playing && onFoot && !pendingEntry) {
     inp = footInput.sample();
     if (inp.reset && !fx.wasReset) respawn();
     fx.wasReset = inp.reset;
@@ -483,8 +573,10 @@ function frame(dt, now) {
     stepPedestrian(hero, inp, dt, city, hash, car, def, traffic);
   }
 
-  // Пешком центр трафика следует за героем; на дороге учитываем и его, и припаркованную машину.
+  // Синхронизируем инстанс угнанной машины до симуляции остального трафика.
+  vehicles.sync();
   stepTraffic(traffic, city, Math.min(dt, 0.05), CONFIG.traffic, onFoot && playing ? hero : car, onFoot && playing ? car : null);
+  if (playing) stepDriver(dt);
 
   if (driving) {
     const res = updateGameplay(g, dt, car, traffic.cars, frameImpact);
@@ -506,20 +598,27 @@ function frame(dt, now) {
   visual.braking = driving && ((inp.brake > 0.1 && car.speed > 0.5) || inp.handbrake);
 
   shake = damp(shake, 0, CONFIG.camera.shakeDecay, dt);
-  R.updatePlayer(car, dt, visual);
+  // В игре гаражная машина остаётся там, где её оставили. В меню/гараже
+  // показываем её как витрину в точке текущего игрока.
+  R.updatePlayer(playing ? vehicles.own.car : car, dt, playing && vehicles.current !== vehicles.own ? null : visual);
   if (state === 'character') {
     previewHero.x = car.x; previewHero.z = car.z; previewHero.y = car.onRoad === false ? 0.16 : 0;
     R.updateHero(previewHero, dt, true);
   } else if (onFoot && playing) R.updateHero(hero, dt);
   if (playing && onFoot) R.updateFootCamera(hero, dt);
   else R.updateCamera(car, dt, shake);
-  R.updateTraffic(traffic.cars);
+  R.updateTraffic(traffic.cars, !playing);
   R.updateCheckpoints(g.checkpoints, time);
   R.updateParticles(dt);
   R.adaptPerformance(dt);
   R.render();
 
   if (playing) {
+    if (onFoot && !pendingEntry) {
+      const target = vehicles.nearest(hero);
+      const occupied = target?.ref && !target.ref.parked && !target.ref.playerControlled;
+      ui.setVehicleAction(occupied ? 'hijack' : 'enter');
+    }
     const st = save.settings;
     const player = onFoot ? hero : car;
     ui.updateHud({

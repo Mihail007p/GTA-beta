@@ -23,8 +23,11 @@ let fails = 0;
 const check = (name, ok, extra = '') => { if (!ok) fails++; console.log((ok ? '  ✓ ' : '  ✗ ') + name + (extra ? '  ' + extra : '')); };
 
 await page.touchscreen.tap(...Object.values(await center('#btn-play')));
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await page.touchscreen.tap(...Object.values(await center('#vehicle-action')));
+await page.waitForFunction(() => !__game.onFoot);
 await sleep(600);
-console.log('после тапа ЕХАТЬ:', JSON.stringify(await st()));
+console.log('после входа в машину:', JSON.stringify(await st()));
 const fps = await page.evaluate(() => new Promise(res => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(f); else res(n); }; requestAnimationFrame(f); }));
 console.log('кадров/с в headless (SwiftShader, без GPU):', fps);
 

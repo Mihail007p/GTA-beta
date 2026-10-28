@@ -20,7 +20,7 @@ import { buildCarMesh, animateCar, disposeCarMesh, preloadCarModel, loadGLTF } f
 import { TRAFFIC_TYPES } from './traffic-types.js';
 import { makeRng } from './rng.js';
 import { wrapAngle, dampAngle, damp } from './car-physics.js';
-import { createHero } from './hero-model.js';
+import { createHero, cloneHeroForDriver } from './hero-model.js';
 import { characterById } from './characters.js';
 
 const BUILDING_TINTS = [0xb8b2a8, 0xa39e98, 0xc4b8a4, 0x9aa3ad, 0xb5a08f, 0x8f98a3, 0xcfc6b6, 0xa8988a];
@@ -95,6 +95,7 @@ export class Renderer {
     this._camInit = false;
     this.orbit = null;          // режим витрины (меню/гараж)
     this.heroActor = null; this.heroId = null; this.heroVisible = false; this._heroRequest = 0;
+    this.driverActor = null;
 
     // perf
     this.frames = 0;
@@ -679,7 +680,7 @@ export class Renderer {
     this.trafficCount = count;
   }
 
-  updateTraffic(cars) {
+  updateTraffic(cars, hideControlled = false) {
     const M = this._tmp.m, q = this._tmp.q, v = this._tmp.v, one = this._tmp.one;
     const col = this._tmp.col;
     if (this.tTypes) {
@@ -687,7 +688,7 @@ export class Renderer {
       cnt.fill(0);
       for (let i = 0; i < cars.length; i++) {
         const c = cars[i];
-        if (!c.alive) continue;
+        if (!c.alive || c.noRender || (hideControlled && c.playerControlled)) continue;
         const ti = c.type || 0, mesh = this.tTypes[ti], k = cnt[ti]++;
         const h = c.visHeading !== undefined ? c.visHeading : c.heading;
         q.setFromEuler(this._tmp.e.set(0, -h, 0));
@@ -708,7 +709,7 @@ export class Renderer {
     let n = 0, ln = 0, wn = 0;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
-      if (!c.alive) continue;
+      if (!c.alive || c.noRender || (hideControlled && c.playerControlled)) continue;
       const h = c.visHeading !== undefined ? c.visHeading : c.heading;
       q.setFromEuler(this._tmp.e.set(0, -h, 0));
       M.compose(v.set(c.x, 0, c.z), q, one);
@@ -783,6 +784,8 @@ export class Renderer {
     try { actor = await createHero(def); }
     catch (err) { console.warn('[hero] не загрузилась модель', id, err); return false; }
     if (request !== this._heroRequest) { actor.dispose(); return false; }
+    // Временный водитель делит текстуры с текущим героем.
+    this.clearDriver();
     if (this.heroActor) { this.scene.remove(this.heroActor.root); this.heroActor.dispose(); }
     this.heroActor = actor; this.heroId = id;
     actor.root.visible = this.heroVisible;
@@ -802,6 +805,35 @@ export class Renderer {
     // Модель MakeHuman смотрит вдоль +Z, логика игры — вдоль +X.
     root.rotation.y = Math.PI / 2 - hero.heading;
     this.heroActor.update(dt, preview ? 0 : hero.speed, !preview && hero.running);
+  }
+
+  spawnDriver() {
+    this.clearDriver();
+    if (!this.heroActor) return false;
+    try {
+      this.driverActor = cloneHeroForDriver(this.heroActor);
+      this.scene.add(this.driverActor.root);
+      return true;
+    } catch (err) {
+      console.warn('[driver] не удалось показать водителя', err);
+      this.clearDriver();
+      return false;
+    }
+  }
+
+  updateDriver(driver, dt) {
+    if (!this.driverActor || !driver) return;
+    const root = this.driverActor.root;
+    root.position.set(driver.x, driver.y || 0, driver.z);
+    root.rotation.y = Math.PI / 2 - driver.heading;
+    this.driverActor.update(dt, driver.speed, driver.running);
+  }
+
+  clearDriver() {
+    if (!this.driverActor) return;
+    this.scene.remove(this.driverActor.root);
+    this.driverActor.dispose();
+    this.driverActor = null;
   }
 
   moveCarCamera(dx, dy) {

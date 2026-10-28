@@ -73,7 +73,9 @@ export class UI {
   _bind() {
     const tap = (id, fn) => $(id).addEventListener('click', (e) => { e.preventDefault(); this.h.click && this.h.click(); fn(); });
     tap('btn-play', () => this.h.play && this.h.play());
-    $('btn-fs').addEventListener('click', (e) => { e.preventDefault(); this.h.fullscreen && this.h.fullscreen(); });
+    for (const id of ['btn-fs', 'hud-fs', 'rotate-fs']) $(id).addEventListener('click', (e) => {
+      e.preventDefault(); this.h.fullscreen && this.h.fullscreen();
+    });
     tap('btn-garage', () => this.h.garage && this.h.garage());
     tap('btn-character', () => this.h.character && this.h.character());
     tap('character-back', () => this.h.characterBack && this.h.characterBack());
@@ -175,9 +177,23 @@ export class UI {
   characterStatus(text) { $('character-status').textContent = text; }
   setOnFoot(onFoot) {
     document.body.classList.toggle('on-foot', onFoot);
-    $('vehicle-action').innerHTML = onFoot ? 'СЕСТЬ<br><span>В МАШИНУ</span>' : 'ВЫЙТИ<br><span>ИЗ МАШИНЫ</span>';
-    $('vehicle-action').setAttribute('aria-label', onFoot ? 'Сесть в свою машину' : 'Выйти из машины');
+    this.setVehicleAction(onFoot ? 'enter' : 'exit');
     $('btn-reset').setAttribute('aria-label', onFoot ? 'Вернуться к машине' : 'Вернуть на дорогу');
+  }
+
+  setVehicleAction(mode) {
+    if (this._vehicleAction === mode) return;
+    this._vehicleAction = mode;
+    const button = $('vehicle-action');
+    const states = {
+      enter: ['СЕСТЬ<br><span>В МАШИНУ</span>', 'Сесть в машину'],
+      hijack: ['УГНАТЬ<br><span>МАШИНУ</span>', 'Угнать машину'],
+      exit: ['ВЫЙТИ<br><span>ИЗ МАШИНЫ</span>', 'Выйти из машины'],
+      busy: ['САДИМСЯ<br><span>В МАШИНУ</span>', 'Посадка в машину'],
+    };
+    const [text, label] = states[mode] || states.enter;
+    button.innerHTML = text;
+    button.setAttribute('aria-label', label);
   }
 
   // -------------------------------------------------------------- ГАРАЖ ---

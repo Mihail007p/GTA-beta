@@ -34,6 +34,9 @@ const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('ope
 console.log('в localStorage:', JSON.stringify(persisted));
 await tap('#settings-back');
 await tap('#btn-play');
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await tap('#vehicle-action');
+await page.waitForFunction(() => !__game.onFoot);
 await sleep(1500);
 console.log('FPS-счётчик в заезде виден:', await page.locator('#fps').isVisible(), '| текст:', (await page.locator('#fps').textContent()).trim());
 // педали на стике: тянем стик вверх

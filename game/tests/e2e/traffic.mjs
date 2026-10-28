@@ -13,6 +13,9 @@ await page.waitForFunction(() => window.__game && window.__game.state === 'menu'
 const st = await page.evaluate(() => { const R = window.__game.R; return { models: !!R.tTypes, types: R.tTypes ? R.tTypes.length : 0, shadowMeshes: (() => { let n = 0; R.playerMesh.traverse(o => { if (o.isMesh && o.castShadow) n++; }); return n; })() }; });
 console.log('трафик на моделях:', JSON.stringify(st));
 await page.evaluate(() => document.getElementById('btn-play').click());
+await page.waitForFunction(() => __game.state === 'play' && __game.onFoot);
+await page.keyboard.press('KeyE');
+await page.waitForFunction(() => !__game.onFoot);
 await sleep(600);
 // встать позади реальных машин трафика разных типов
 for (let shot = 0; shot < 3; shot++) {

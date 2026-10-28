@@ -25,6 +25,7 @@
     <div class="hud-top-left">
       <button class="icon-btn" id="btn-pause" aria-label="Пауза">❚❚</button>
       <button class="icon-btn" id="btn-reset" aria-label="Вернуть на дорогу">⟲</button>
+      <button class="icon-btn hidden" id="hud-fs" aria-label="На весь экран" title="На весь экран">⛶</button>
     </div>
 
     <div class="hud-top-center">
@@ -56,7 +57,7 @@
 
   <!-- Управление строит input.js -->
   <div id="controls-root" class="hidden">
-    <button id="vehicle-action" type="button" aria-label="Выйти из машины">ВЫЙТИ<br><span>ИЗ МАШИНЫ</span></button>
+    <button id="vehicle-action" type="button" aria-label="Сесть в машину">СЕСТЬ<br><span>В МАШИНУ</span></button>
   </div>
 
   <!-- ========================== ЭКРАНЫ ========================== -->
@@ -66,7 +67,7 @@
     <div id="load-text">Загрузка…</div>
     <div id="load-tap" class="load-tap">
       <div class="load-tap-main">НАЖМИТЕ, ЧТОБЫ НАЧАТЬ</div>
-      <div class="load-tap-sub">игра откроется на весь экран</div>
+      <div class="load-tap-sub">попробуем открыть игру на весь экран</div>
     </div>
   </div>
   <button id="btn-fs" class="btn-small fs-btn hidden" aria-label="На весь экран"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>На весь экран</span></button>
@@ -74,8 +75,8 @@
   <div id="menu" class="screen hidden">
     <div class="menu-left">
       <div class="logo small">OPEN<span>STREET</span></div>
-      <div class="menu-sub">свободная езда по городу</div>
-      <button class="btn-big primary" id="btn-play">ЕХАТЬ</button>
+      <div class="menu-sub">свободный город</div>
+      <button class="btn-big primary" id="btn-play">ИГРАТЬ</button>
       <button class="btn-big" id="btn-garage">ГАРАЖ</button>
       <button class="btn-big" id="btn-character">ПЕРСОНАЖ</button>
       <button class="btn-big" id="btn-settings">НАСТРОЙКИ</button>
@@ -89,10 +90,9 @@
         <div class="stat-line"><span>Машин в гараже</span><b id="menu-cars">1 / 4</b></div>
       </div>
       <div class="menu-help">
-        <b>Как играть.</b> Слева — руль; справа — педали и свайп камеры.
-        Собирай голубые кольца, дрифтуй и зарабатывай деньги. Остановись и выйди
-        из своей машины: стик слева — движение, свайп справа — камера,
-        кнопка «БЕГ» — ускорение.
+        <b>Как играть.</b> Начни пешком: стик слева — движение, свайп справа — камера,
+        «БЕГ» — ускорение. Подойди к машине и нажми «СЕСТЬ» или «УГНАТЬ».
+        За рулём собирай голубые кольца, дрифтуй и зарабатывай деньги.
       </div>
     </div>
   </div>
@@ -141,7 +141,6 @@
       </div>
     </div>
   </div>
-  </div>
 
   <div id="pause" class="screen hidden">
     <div class="panel narrow">
@@ -158,6 +157,8 @@
   <div id="rotate">
     <div class="rotate-icon">⟳</div>
     <div>Поверните телефон горизонтально</div>
+    <button class="btn-small accent" id="rotate-fs">НА ВЕСЬ ЭКРАН</button>
+    <div class="rotate-help">Если поворот не сработал, поверните телефон вручную.</div>
   </div>
 
   <div id="fatal" class="screen hidden">
