@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+const OUT = new URL('../shots/', import.meta.url).pathname;
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const ctx = await browser.newContext({ viewport: { width: 820, height: 304 }, hasTouch: true, isMobile: true });
+const page = await ctx.newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message));
+await page.goto('http://localhost:8080/?shot&noaudio');
+await page.waitForFunction(() => window.__game && window.__game.state === 'menu', null, { timeout: 60000 });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const tap = async (sel) => { const b = await page.locator(sel).boundingBox(); if (!b) throw new Error('не видно: ' + sel); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); await sleep(300); };
+const fits = async (sels) => { const vh = 304; const r = []; for (const s of sels) { const b = await page.locator(s).boundingBox(); r.push(s + (b && b.y >= 0 && b.y + b.height <= vh ? ' ✓' : ' ✗ ' + (b ? Math.round(b.y + b.height) : 'нет'))); } return r.join(' | '); };
+console.log('меню:', await fits(['#btn-play', '#btn-garage', '#btn-character', '#btn-settings']));
+await page.screenshot({ path: OUT + 'h304_menu.png' });
+await tap('#btn-settings');
+console.log('настройки:', await fits(['#settings-back', '#btn-reset-save', '[data-set="showFps"]', '[data-set="quality"]']));
+await page.screenshot({ path: OUT + 'h304_settings.png' });
+await tap('#settings-back');
+await tap('#btn-character');
+await page.waitForFunction(() => __game.state === 'character' && __game.R.heroVisible, null, { timeout: 60000 });
+const characterControls = ['#character-back', '#character-prev', '#character-next', '#character-action'];
+console.log('персонаж:', await fits(characterControls));
+for (const selector of characterControls) {
+  const b = await page.locator(selector).boundingBox();
+  assert.ok(b && b.y >= 0 && b.y + b.height <= 304, `${selector} не помещается на экран`);
+}
+await page.screenshot({ path: OUT + 'h304_character.png' });
+await tap('#character-back');
+await tap('#btn-garage'); await sleep(500);
+console.log('гараж:', await fits(['#garage-back', '#car-action', '#car-next']));
+await page.screenshot({ path: OUT + 'h304_garage.png' });
+await tap('#garage-back');
+await tap('#btn-play'); await sleep(800);
+console.log('HUD:', await fits(['#btn-pause', '#btn-reset', '#vehicle-action', '[data-btn="gas"]', '[data-btn="brake"]', '[data-btn="hand"]']));
+await page.screenshot({ path: OUT + 'h304_play.png' });
+await page.waitForFunction(() => __game.R.heroId === __game.save.selectedCharacter, null, { timeout: 60000 });
+await tap('#vehicle-action');
+await page.waitForFunction(() => __game.onFoot, null, { timeout: 30000 });
+const footControls = ['#btn-pause', '#btn-reset', '#vehicle-action', '[data-foot="run"]'];
+console.log('пешком:', await fits(footControls));
+for (const selector of footControls) {
+  const b = await page.locator(selector).boundingBox();
+  assert.ok(b && b.y >= 0 && b.y + b.height <= 304, `${selector} не помещается на экран`);
+}
+await page.screenshot({ path: OUT + 'h304_onfoot.png' });
+await tap('#btn-pause');
+const pauseBtns = await page.$$eval('#pause button', bs => bs.map(b => '#' + b.id));
+console.log('пауза:', await fits(pauseBtns));
+await page.screenshot({ path: OUT + 'h304_pause.png' });
+console.log('ошибки:', errs.length ? errs : 'нет');
+assert.deepEqual(errs, [], 'ошибки браузера');
+await browser.close();

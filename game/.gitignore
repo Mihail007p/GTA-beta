@@ -1,0 +1,4 @@
+# Локальные зависимости и результаты прогонов, а не игровой контент
+**/node_modules/
+tests/shots/*
+!tests/shots/.gitkeep

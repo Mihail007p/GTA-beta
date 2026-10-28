@@ -1,0 +1,10 @@
+{
+  "name": "open-street-character-tools",
+  "private": true,
+  "type": "module",
+  "description": "Инструменты для повторного экспорта героев и конвертации движений",
+  "devDependencies": {
+    "@gltf-transform/cli": "4.2.1",
+    "three": "0.170.0"
+  }
+}

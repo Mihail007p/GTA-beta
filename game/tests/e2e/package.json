@@ -1,0 +1,27 @@
+{
+  "name": "open-street-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Браузерные тесты Open Street (headless Chromium). Сначала запустите сервер: node tools/server.mjs 8080",
+  "scripts": {
+    "setup": "npm i && npx playwright install chromium",
+    "basic": "node run.mjs basic",
+    "garage": "node run.mjs garage",
+    "touch": "node touch.mjs",
+    "flow": "node flow.mjs",
+    "settings": "node settings.mjs",
+    "reset": "node reset-confirmation.mjs",
+    "screens": "node screens.mjs",
+    "all": "node run.mjs basic && node touch.mjs && node fullscreen.mjs && node flow.mjs && node settings.mjs && node reset-confirmation.mjs && node character.mjs && node githack-path.mjs && node screens.mjs && node progs.mjs && node traffic.mjs && node cars.mjs",
+    "fullscreen": "node fullscreen.mjs",
+    "cars": "node cars.mjs",
+    "traffic": "node traffic.mjs",
+    "perf": "node perfsplit.mjs auto",
+    "character": "node character.mjs",
+    "upgrade": "node upgrade.mjs",
+    "githack": "node githack-path.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.48.2"
+  }
+}
