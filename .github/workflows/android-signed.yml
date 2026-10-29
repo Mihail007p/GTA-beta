@@ -101,6 +101,7 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           set -euo pipefail
+          trap 'echo "::error title=APK verification failed::Verification command failed at script line $LINENO."' ERR
           apk="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
           test -s "$apk"
           sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -109,13 +110,23 @@ jobs:
           test -x "$build_tools/apksigner"
           test -x "$build_tools/aapt"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/openstreet-signature.txt"
+          signature_summary="$(grep 'Verified using v[123] scheme' "$RUNNER_TEMP/openstreet-signature.txt" | tr '\n' ';')"
+          echo "::notice title=APK signature schemes::$signature_summary"
           grep -Fq 'Verified using v1 scheme (JAR signing): true' "$RUNNER_TEMP/openstreet-signature.txt"
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/openstreet-signature.txt"
           grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' "$RUNNER_TEMP/openstreet-signature.txt"
           "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/openstreet-badging.txt"
+          echo "::notice title=APK package::$(head -1 "$RUNNER_TEMP/openstreet-badging.txt")"
           grep -Fq "package: name='ru.openstreet.game' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" "$RUNNER_TEMP/openstreet-badging.txt"
-          python3 android/tools/align-apk.py --check "$apk"
-          python3 android/tools/verify-apk-assets.py "$apk"
+          if ! python3 android/tools/align-apk.py --check "$apk" > "$RUNNER_TEMP/openstreet-align.log" 2>&1; then
+            echo "::error title=APK alignment::$(tail -1 "$RUNNER_TEMP/openstreet-align.log")"
+            exit 1
+          fi
+          if ! python3 android/tools/verify-apk-assets.py "$apk" > "$RUNNER_TEMP/openstreet-assets.log" 2>&1; then
+            echo "::error title=APK assets::$(tail -1 "$RUNNER_TEMP/openstreet-assets.log")"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/openstreet-align.log" "$RUNNER_TEMP/openstreet-assets.log"
           mkdir -p "$RUNNER_TEMP/openstreet-release"
           cp "$apk" "$RUNNER_TEMP/openstreet-release/OpenStreet-v$VERSION_NAME.apk"
           cp "$RUNNER_TEMP/openstreet-signature.txt" "$RUNNER_TEMP/openstreet-release/signature.txt"
