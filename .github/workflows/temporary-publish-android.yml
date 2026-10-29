@@ -51,7 +51,7 @@ jobs:
           grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' signature.txt
           grep -Fq 'Number of signers: 1' signature.txt
           sha="$(sha256sum OpenStreet-v0.13.1.apk | cut -d ' ' -f 1)"
-          cert="$(awk -F ': ' '/Signer #1 certificate SHA-256 digest:/ {print $2}' signature.txt)"
+          cert="$(awk -F ': ' '/certificate SHA-256 digest:/ {print $NF}' signature.txt | tr '[:upper:]' '[:lower:]' | sort -u)"
           echo "::notice title=Public certificate line::$(grep -F 'certificate SHA-256 digest:' signature.txt | tr '\n' ';')"
           [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
           [[ "$cert" =~ ^[0-9a-f]{64}$ ]]
