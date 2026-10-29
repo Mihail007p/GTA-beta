@@ -1,0 +1,32 @@
+{
+  "macro": {
+    "gender": 0,
+    "age": 0.38,
+    "muscle": 0.46,
+    "weight": 0.46,
+    "height": 0.48,
+    "proportions": 0.5,
+    "african": 0.08,
+    "asian": 0.1,
+    "caucasian": 0.82
+  },
+  "details": {},
+  "expression": {},
+  "assets": {
+    "skin": "young_caucasian_female",
+    "eyes": "green",
+    "eyebrows": "eyebrow001",
+    "eyelashes": "eyelashes01",
+    "hair": "ponytail01",
+    "hairTint": "#4a2f1f",
+    "teeth": "",
+    "tongue": "",
+    "clothes": [
+      "female_elegantsuit01",
+      "shoes04"
+    ],
+    "tint": "#ffffff",
+    "rig": "game_engine",
+    "pose": ""
+  }
+}

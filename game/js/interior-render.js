@@ -283,6 +283,13 @@ export function buildInteriorScene(layout, variation = 0) {
     mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); scene.add(mesh);
   }
   if (home) buildHomeDetails(scene, layout, unit, mat, ambient, lamp);
+  else {
+    const marker = new THREE.Mesh(new THREE.RingGeometry(0.26, 0.39, 24),
+      new THREE.MeshBasicMaterial({ color: 0x69f0cc, transparent: true, opacity: 0.8, depthWrite: false, toneMapped: false }));
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.set(layout.interactions[0].x, 0.025, layout.interactions[0].z);
+    scene.add(marker);
+  }
   return scene;
 }
 

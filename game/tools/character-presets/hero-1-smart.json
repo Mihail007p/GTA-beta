@@ -1,0 +1,32 @@
+{
+  "macro": {
+    "gender": 1,
+    "age": 0.38,
+    "muscle": 0.62,
+    "weight": 0.46,
+    "height": 0.53,
+    "proportions": 0.5,
+    "african": 0.12,
+    "asian": 0.08,
+    "caucasian": 0.8
+  },
+  "details": {},
+  "expression": {},
+  "assets": {
+    "skin": "young_caucasian_male",
+    "eyes": "brown",
+    "eyebrows": "eyebrow001",
+    "eyelashes": "eyelashes01",
+    "hair": "short01",
+    "hairTint": "#32241b",
+    "teeth": "",
+    "tongue": "",
+    "clothes": [
+      "male_elegantsuit01",
+      "shoes01"
+    ],
+    "tint": "#ffffff",
+    "rig": "game_engine",
+    "pose": ""
+  }
+}

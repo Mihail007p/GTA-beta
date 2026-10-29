@@ -1,6 +1,7 @@
 # Исходные настройки героев
 
-`hero-1.json` и `hero-2.json` — пресеты HumanGenWeb; не нужны для запуска игры.
+`hero-1.json`, `hero-2.json`, `hero-1-smart.json`, `hero-2-smart.json`,
+`citizen-1.json` и `citizen-2.json` — пресеты HumanGenWeb; для запуска игры не нужны.
 Исходная версия HumanGenWeb: [`a8ee33f96791ed15534246ac88cc8b20f9da8f6a`](https://github.com/NastyFFM/HumanGenWeb/tree/a8ee33f96791ed15534246ac88cc8b20f9da8f6a).
 Происхождение и лицензии данных описаны в [`../../assets/characters/README.md`](../../assets/characters/README.md).
 
@@ -10,7 +11,7 @@
    `humangen-export.patch` к её `app.js`: он отбрасывает отрицательные веса
    кожи и не записывает служебные квадраты в GLB. Он предназначен для указанной ревизии.
 2. Запустите HumanGenWeb через локальный HTTP-сервер, откройте его в браузере,
-   загрузите `hero-1.json` или `hero-2.json` через **Load preset** и дождитесь
+   загрузите соответствующий JSON-пресет через **Load preset** и дождитесь
    загрузки целей, одежды, рига и текстур. Экспортируйте **Download GLB**.
    HumanGenWeb в оригинальной конфигурации загружает Three.js через CDN; для
    разработки без CDN можно подставить локальную копию Three.js 0.170.0.

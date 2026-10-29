@@ -1,0 +1,32 @@
+{
+  "macro": {
+    "gender": 0,
+    "age": 0.52,
+    "muscle": 0.46,
+    "weight": 0.52,
+    "height": 0.48,
+    "proportions": 0.5,
+    "african": 0.05,
+    "asian": 0.72,
+    "caucasian": 0.23
+  },
+  "details": {},
+  "expression": {},
+  "assets": {
+    "skin": "middleage_asian_female",
+    "eyes": "green",
+    "eyebrows": "eyebrow001",
+    "eyelashes": "eyelashes01",
+    "hair": "bob02",
+    "hairTint": "#211719",
+    "teeth": "",
+    "tongue": "",
+    "clothes": [
+      "female_sportsuit01",
+      "shoes06"
+    ],
+    "tint": "#ffffff",
+    "rig": "game_engine",
+    "pose": ""
+  }
+}

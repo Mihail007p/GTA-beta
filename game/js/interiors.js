@@ -92,7 +92,10 @@ export function makeInteriorLayout(kind) {
     kind, width: 12, depth: 12, height: 3.45,
     spawn: { x: 0, z: 3.25, heading: -Math.PI / 2 },
     exit: { x: 0, z: 5.15 }, props,
-    interactions: kind === 'home' ? makeHomeInteractions(props) : [],
+    interactions: kind === 'home' ? makeHomeInteractions(props) : [
+      // Перед свободным левым краем прилавка: полка не закрывает подход.
+      { id: 'cashier', kind: 'shop', x: 1.80, z: -3.50, reach: 0.85, target: { x: 3.35, z: -4.65 } },
+    ],
     walls, colliders: [...walls, ...props.filter(p => p.solid !== false)],
   };
 }

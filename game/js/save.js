@@ -5,6 +5,7 @@
 import { STARTER_CAR } from './cars.js';
 import { DEFAULT_CHARACTER, characterById } from './characters.js';
 import { makeHomeState } from './home-interactions.js';
+import { makeLife } from './life.js';
 
 const KEY = 'openstreet.save.v1';
 
@@ -19,7 +20,8 @@ export const DEFAULT_SAVE = {
   activeCar: STARTER_CAR,
   selectedCharacter: DEFAULT_CHARACTER,
   homeStates: {},         // состояния предметов отдельно для каждого дома
-  settings: { sound: true, haptics: true, quality: 'auto', steerSens: 'mid', steerMode: 'arrows', stickPedals: false, showFps: false },
+  life: null,             // создаётся отдельно, чтобы инвентарь не был общим
+  settings: { sound: true, haptics: true, quality: 'auto', steerSens: 'mid', steerMode: 'arrows', stickPedals: false, showFps: false, starvationDamage: true },
   notifiedCars: [],       // о каких машинах уже сообщали «можно купить»
   runs: 0,
   lastPlayed: 0,
@@ -45,6 +47,8 @@ export function loadSave() {
 function mergeDefaults(data) {
   const out = Object.assign({}, DEFAULT_SAVE, data || {});
   out.settings = Object.assign({}, DEFAULT_SAVE.settings, (data && data.settings) || {});
+  if (typeof out.settings.starvationDamage !== 'boolean') out.settings.starvationDamage = true;
+  out.life = makeLife(data?.life);
   // массивы всегда копируем: иначе ownCar() мутировал бы DEFAULT_SAVE
   out.ownedCars = (Array.isArray(out.ownedCars) && out.ownedCars.length) ? out.ownedCars.slice() : [STARTER_CAR];
   out.notifiedCars = Array.isArray(out.notifiedCars) ? out.notifiedCars.slice() : [];
@@ -113,6 +117,7 @@ export function resetSave() {
   _cache.ownedCars = [STARTER_CAR];
   _cache.notifiedCars = [];
   _cache.homeStates = {};
+  _cache.life = makeLife();
   markDirty();
   flushNow();
   return _cache;
