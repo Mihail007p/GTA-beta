@@ -101,9 +101,27 @@ try {
   await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу', null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => !__game.interior && !__game.roomTransition, null, { timeout: 30000 });
+  await page.evaluate(() => {
+    const door = __game.entrances.find(d => d.kind === 'home');
+    Object.assign(__game.hero, { x: door.x, z: door.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в дом', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => __game.interior?.layout.kind === 'home' && !__game.roomTransition, null, { timeout: 30000 });
+  await page.evaluate(() => {
+    const sofa = __game.interior.layout.interactions.find(i => i.id === 'sofa');
+    Object.assign(__game.hero, { x: sofa.x, z: sofa.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Сесть на диван', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => __game.hero.pose?.kind === 'sit' && __game.hero.pose.amount === 1, null, { timeout: 30000 });
+  const tvButton = await page.locator('#home-tv-action').boundingBox();
+  assert.ok(tvButton);
+  await page.touchscreen.tap(tvButton.x + tvButton.width / 2, tvButton.y + tvButton.height / 2);
+  await page.waitForFunction(() => __game.interior.homeState.tv && __game.R.interiorScene.userData.home.tvPicture.visible, null, { timeout: 30000 });
   assert.equal(await page.evaluate(() => __game.save.money), 7500);
   assert.deepEqual(errors, []);
-  console.log('Обновлённая игра, герой, помещение и сохранение работают без сети.');
+  console.log('Обновлённая игра, герой, магазин, диван и телевизор работают без сети; сохранение не потеряно.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

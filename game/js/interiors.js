@@ -2,6 +2,7 @@
 // Вход только с проходимого фасада, соединённого с ближайшей дорогой.
 import { buildSpatialHash, circleVsAABBs } from './city.js';
 import { HERO_RADIUS, circleVsCar } from './pedestrian.js';
+import { makeHomeInteractions } from './home-interactions.js';
 
 export const DOOR_REACH = 1.35;
 export const EXIT_REACH = 1.35;
@@ -71,7 +72,9 @@ export function makeInteriorLayout(kind) {
     { kind: 'bed', x: -3.2, z: -4.25, hw: 1.45, hd: 1.0 },
     { kind: 'table', x: -1.9, z: -0.6, hw: 0.8, hd: 0.55 },
     { kind: 'kitchen', x: 2.4, z: -4.95, hw: 2.0, hd: 0.48 },
-    { kind: 'cabinet', x: 5.05, z: -1.8, hw: 0.48, hd: 1.3 },
+    { kind: 'cabinet', x: 5.05, z: -3.4, hw: 0.48, hd: 1.3 },
+    // Настенный телевизор не занимает проход, в отличие от напольной мебели.
+    { kind: 'television', x: 5.68, z: -0.8, hw: 0.10, hd: 0.85, solid: false },
     { kind: 'plant', x: 4.8, z: 4.8, hw: 0.35, hd: 0.35 },
   ] : [
     { kind: 'shelf', x: -3.45, z: -0.9, hw: 0.5, hd: 2.65 },
@@ -89,7 +92,8 @@ export function makeInteriorLayout(kind) {
     kind, width: 12, depth: 12, height: 3.45,
     spawn: { x: 0, z: 3.25, heading: -Math.PI / 2 },
     exit: { x: 0, z: 5.15 }, props,
-    walls, colliders: [...walls, ...props],
+    interactions: kind === 'home' ? makeHomeInteractions(props) : [],
+    walls, colliders: [...walls, ...props.filter(p => p.solid !== false)],
   };
 }
 

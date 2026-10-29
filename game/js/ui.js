@@ -101,6 +101,7 @@ export class UI {
     $('btn-pause').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.pause && this.h.pause(); });
     $('btn-reset').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.respawn && this.h.respawn(); });
     $('vehicle-action').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.vehicle && this.h.vehicle(); });
+    $('home-tv-action').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.homeTv && this.h.homeTv(); });
 
     for (const seg of document.querySelectorAll('.seg')) {
       seg.addEventListener('click', (e) => {
@@ -189,6 +190,7 @@ export class UI {
 
   setInside(kind) {
     this._inside = kind || null;
+    this.setHomeTvAction(false, false);
     document.body.classList.toggle('in-interior', !!kind);
     $('btn-reset').setAttribute('aria-label', kind ? 'Вернуться к выходу' : 'Вернуться к машине');
   }
@@ -208,10 +210,36 @@ export class UI {
       'enter-home': ['ВОЙТИ<br><span>В ДОМ</span>', 'Войти в дом'],
       'enter-shop': ['ВОЙТИ<br><span>В МАГАЗИН</span>', 'Войти в магазин'],
       'room-exit': ['ВЫЙТИ<br><span>НА УЛИЦУ</span>', 'Выйти на улицу'],
+      'home-sit': ['СЕСТЬ<br><span>НА ДИВАН</span>', 'Сесть на диван'],
+      'home-lie': ['ЛЕЧЬ<br><span>НА КРОВАТЬ</span>', 'Лечь на кровать'],
+      'home-stand': ['ВСТАТЬ<br><span>ИЛИ СТИК</span>', 'Встать'],
+      'home-rising': ['ВСТАЁМ<br><span>ПОДОЖДИТЕ</span>', 'Встаём'],
+      'home-light-on': ['ВКЛЮЧИТЬ<br><span>СВЕТ</span>', 'Включить свет'],
+      'home-light-off': ['ВЫКЛЮЧИТЬ<br><span>СВЕТ</span>', 'Выключить свет'],
+      'home-tv-on': ['ВКЛЮЧИТЬ<br><span>ТЕЛЕВИЗОР</span>', 'Включить телевизор'],
+      'home-tv-off': ['ВЫКЛЮЧИТЬ<br><span>ТЕЛЕВИЗОР</span>', 'Выключить телевизор'],
+      'home-water-on': ['ОТКРЫТЬ<br><span>КРАН</span>', 'Открыть кран'],
+      'home-water-off': ['ЗАКРЫТЬ<br><span>КРАН</span>', 'Закрыть кран'],
+      'home-stove-on': ['ВКЛЮЧИТЬ<br><span>ПЛИТУ</span>', 'Включить плиту'],
+      'home-stove-off': ['ВЫКЛЮЧИТЬ<br><span>ПЛИТУ</span>', 'Выключить плиту'],
+      'home-cabinet-on': ['ОТКРЫТЬ<br><span>ШКАФ</span>', 'Открыть шкаф'],
+      'home-cabinet-off': ['ЗАКРЫТЬ<br><span>ШКАФ</span>', 'Закрыть шкаф'],
+      'home-book-on': ['ОТКРЫТЬ<br><span>КНИГУ</span>', 'Открыть книгу'],
+      'home-book-off': ['ЗАКРЫТЬ<br><span>КНИГУ</span>', 'Закрыть книгу'],
     };
     const [text, label] = states[mode] || states.enter;
     button.innerHTML = text;
     button.setAttribute('aria-label', label);
+  }
+
+  setHomeTvAction(show, on) {
+    const key = `${!!show}:${!!on}`;
+    if (this._homeTvAction === key) return;
+    this._homeTvAction = key;
+    const button = $('home-tv-action');
+    button.classList.toggle('hidden', !show);
+    button.innerHTML = `${on ? 'ВЫКЛЮЧИТЬ' : 'ВКЛЮЧИТЬ'}<br><span>ТЕЛЕВИЗОР</span>`;
+    button.setAttribute('aria-label', `${on ? 'Выключить' : 'Включить'} телевизор с дивана`);
   }
 
   // -------------------------------------------------------------- ГАРАЖ ---

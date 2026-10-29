@@ -303,7 +303,16 @@ body.playing #toast { top: auto; bottom: 104px; }
   font-size: 12px; font-weight: 900; line-height: 1.05; touch-action: manipulation;
 }
 #vehicle-action span { font-size: 9px; font-weight: 700; color: #b7d7e0; }
+body.in-interior #vehicle-action { width: 96px; min-height: 54px; font-size: 11px; }
 #vehicle-action:active { background: rgba(27, 125, 150, .8); }
+#home-tv-action {
+  position: absolute; z-index: 5; top: 138px; right: calc(12px + var(--safe-r));
+  width: 96px; min-height: 54px; padding: 5px; border-radius: 14px; pointer-events: auto;
+  border: 1px solid rgba(160, 235, 255, .55); background: rgba(9, 24, 35, .76);
+  font-size: 11px; font-weight: 900; line-height: 1.05; touch-action: manipulation;
+}
+#home-tv-action span { font-size: 9px; color: #b7d7e0; }
+#home-tv-action:active { background: rgba(27, 125, 150, .8); }
 body.on-foot #speedo, body.on-foot #fx-speed { display: none; }
 body.in-interior #minimap, body.in-interior #chain, body.in-interior #drift-live { display: none !important; }
 .foot-controls { position: absolute; inset: 0; }
@@ -332,6 +341,7 @@ body.in-interior #minimap, body.in-interior #chain, body.in-interior #drift-live
 .character-status { min-height: 18px; color: var(--accent); }
 @media (max-height: 340px) {
   #vehicle-action { top: 60px; }
+  #home-tv-action { top: 120px; }
   .foot-run { width: 68px; height: 68px; }
   .character-panel { gap: 7px; padding: 10px; }
 }
