@@ -72,14 +72,14 @@ try {
     const cache = own && await caches.open(own);
     return {
       keys, scope: r.scope, own,
-      files: await Promise.all(['index.html', 'manifest.json', 'assets/characters/hero-1.glb', 'assets/characters/hero-2.glb', 'js/vehicles.js', 'vendor/THREE-LICENSE.txt'].map(async u => !!(await cache?.match(u)))),
+      files: await Promise.all(['index.html', 'manifest.json', 'assets/characters/hero-1.glb', 'assets/characters/hero-2.glb', 'js/vehicles.js', 'vendor/THREE-LICENSE.txt', 'js/look-controls.js', 'js/interiors.js', 'js/interior-render.js'].map(async u => !!(await cache?.match(u)))),
       manifestType: (await fetch('manifest.json')).headers.get('content-type'),
     };
   });
   assert.equal(installed.scope, base);
   assert.ok(installed.own);
   assert.ok(installed.keys.includes('other-site-cache') && installed.keys.includes(otherScopeCache));
-  assert.deepEqual(installed.files, [true, true, true, true, true, true]);
+  assert.deepEqual(installed.files, [true, true, true, true, true, true, true, true, true]);
   assert.match(installed.manifestType, /application\/json/);
   assert.equal(requests.filter(r => r === prefix).length, 0, 'установка не должна требовать ответ на адрес папки');
   // Новый хеш Raw.githack — другой путь и свой SW-кэш, но тот же origin

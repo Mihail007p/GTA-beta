@@ -40,7 +40,9 @@ try {
   await menu();
   await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 60000 });
   const previousCaches = await page.evaluate(() => caches.keys());
-  assert.ok(previousCaches.some(c => c.startsWith('openstreet-') && c !== currentCache), `неожиданный старый кэш: ${previousCaches}`);
+  const ownScope = `openstreet:http://localhost:${server.address().port}/:`;
+  const oldOwn = previousCaches.filter(c => (c.startsWith('openstreet-') || c.startsWith(ownScope)) && c !== currentCache);
+  assert.ok(oldOwn.length, `неожиданный старый кэш: ${previousCaches}`);
   await page.evaluate(async () => {
     await caches.open('another-application-cache');
     await caches.open(`openstreet:${location.origin}/another-scope/:v1`);
@@ -57,6 +59,7 @@ try {
   await page.waitForFunction(() => window.__workerChanged, null, { timeout: 90000 });
   const newCaches = await page.evaluate(() => caches.keys());
   assert.ok(newCaches.includes(currentCache));
+  for (const key of oldOwn.filter(c => c.startsWith(ownScope))) assert.ok(!newCaches.includes(key), 'старый кэш этого приложения должен быть заменён');
   assert.ok(newCaches.includes('another-application-cache'), 'нельзя удалять чужие кэши');
   assert.ok(newCaches.some(k => k.includes('/another-scope/')), 'нельзя удалять кэш другой области');
   await page.reload();
@@ -79,9 +82,21 @@ try {
   await page.waitForFunction(() => !__game.onFoot, null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => __game.onFoot && __game.R.heroActor.root.visible, null, { timeout: 30000 });
+  // Новый интерьер также должен работать после обновления и перезагрузки без сети.
+  await page.evaluate(() => {
+    const door = __game.entrances.find(d => d.kind === 'shop');
+    Object.assign(__game.hero, { x: door.x, z: door.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в магазин', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => __game.interior?.layout.kind === 'shop' && !__game.roomTransition, null, { timeout: 30000 });
+  await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => !__game.interior && !__game.roomTransition, null, { timeout: 30000 });
   assert.equal(await page.evaluate(() => __game.save.money), 7500);
   assert.deepEqual(errors, []);
-  console.log('Обновлённая игра, герой и сохранение работают без сети.');
+  console.log('Обновлённая игра, герой, помещение и сохранение работают без сети.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

@@ -178,18 +178,30 @@ export class UI {
   setOnFoot(onFoot) {
     document.body.classList.toggle('on-foot', onFoot);
     this.setVehicleAction(onFoot ? 'enter' : 'exit');
-    $('btn-reset').setAttribute('aria-label', onFoot ? 'Вернуться к машине' : 'Вернуть на дорогу');
+    $('btn-reset').setAttribute('aria-label', this._inside ? 'Вернуться к выходу' : onFoot ? 'Вернуться к машине' : 'Вернуть на дорогу');
   }
+
+  setInside(kind) {
+    this._inside = kind || null;
+    document.body.classList.toggle('in-interior', !!kind);
+    $('btn-reset').setAttribute('aria-label', kind ? 'Вернуться к выходу' : 'Вернуться к машине');
+  }
+
+  roomFade(opacity) { $('room-fade').style.opacity = String(opacity); }
 
   setVehicleAction(mode) {
     if (this._vehicleAction === mode) return;
     this._vehicleAction = mode;
     const button = $('vehicle-action');
+    button.classList.toggle('hidden', mode === 'none');
     const states = {
       enter: ['СЕСТЬ<br><span>В МАШИНУ</span>', 'Сесть в машину'],
       hijack: ['УГНАТЬ<br><span>МАШИНУ</span>', 'Угнать машину'],
       exit: ['ВЫЙТИ<br><span>ИЗ МАШИНЫ</span>', 'Выйти из машины'],
       busy: ['САДИМСЯ<br><span>В МАШИНУ</span>', 'Посадка в машину'],
+      'enter-home': ['ВОЙТИ<br><span>В ДОМ</span>', 'Войти в дом'],
+      'enter-shop': ['ВОЙТИ<br><span>В МАГАЗИН</span>', 'Войти в магазин'],
+      'room-exit': ['ВЫЙТИ<br><span>НА УЛИЦУ</span>', 'Выйти на улицу'],
     };
     const [text, label] = states[mode] || states.enter;
     button.innerHTML = text;
@@ -325,7 +337,8 @@ export class UI {
         const low = g.timeLeft < 4;
         if (low !== L.low) { L.low = low; $('chain').classList.toggle('low', low); }
       }
-      const cpTxt = s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
+      const cpTxt = s.interior ? (s.interior === 'shop' ? 'МАГАЗИН · ВЫХОД У ДВЕРИ' : 'ДОМ · ВЫХОД У ДВЕРИ')
+        : s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
       if (cpTxt !== L.cpTxt) { L.cpTxt = cpTxt; $('cp-dist').textContent = cpTxt; }
 
       const d = g.drift;
@@ -338,10 +351,12 @@ export class UI {
       if (s.fpsText && s.fpsText !== L.fpsText) { L.fpsText = s.fpsText; $('fps').textContent = s.fpsText; }
     }
 
-    this._mapT += s.dt;
-    if (this._mapT >= 1 / 30) {
-      this._mapT = 0;
-      this.drawMinimap(s.car, s.g.checkpoints, s.camYaw);
+    if (!s.interior) {
+      this._mapT += s.dt;
+      if (this._mapT >= 1 / 30) {
+        this._mapT = 0;
+        this.drawMinimap(s.car, s.g.checkpoints, s.camYaw);
+      }
     }
   }
 

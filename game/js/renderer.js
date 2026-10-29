@@ -20,8 +20,10 @@ import { buildCarMesh, animateCar, disposeCarMesh, preloadCarModel, loadGLTF } f
 import { TRAFFIC_TYPES } from './traffic-types.js';
 import { makeRng } from './rng.js';
 import { wrapAngle, dampAngle, damp } from './car-physics.js';
+import { turnLook } from './look-controls.js';
 import { createHero, cloneHeroForDriver } from './hero-model.js';
 import { characterById } from './characters.js';
+import { buildEntranceMeshes, buildInteriorScene, disposeInteriorScene } from './interior-render.js';
 
 const BUILDING_TINTS = [0xb8b2a8, 0xa39e98, 0xc4b8a4, 0x9aa3ad, 0xb5a08f, 0x8f98a3, 0xcfc6b6, 0xa8988a];
 const TRAFFIC_COLORS = [0xd0d4da, 0x2e353d, 0xa8382f, 0x2f5d8a, 0xe2dccc, 0x50565e];
@@ -92,6 +94,10 @@ export class Renderer {
     this.driveLookYaw = 0; this.driveLookHeight = 0;
     this._camClip = 99;
     this.camHash = null;
+    this.outdoorHash = null;
+    this.interiorHash = null;
+    this.interiorScene = null;
+    this.inInterior = false;
     this._camInit = false;
     this.orbit = null;          // режим витрины (меню/гараж)
     this.heroActor = null; this.heroId = null; this.heroVisible = false; this._heroRequest = 0;
@@ -741,6 +747,31 @@ export class Renderer {
     if (this.tBodies.instanceColor) this.tBodies.instanceColor.needsUpdate = true;
   }
 
+  // -------------------------------------------------------- ПОМЕЩЕНИЯ ---
+  buildEntrances(city, entrances) { buildEntranceMeshes(this.scene, city, entrances); }
+
+  openInterior(layout, hash, variation) {
+    this.closeInterior();
+    this.interiorScene = buildInteriorScene(layout, variation);
+    this.interiorHash = hash;
+    this.setInteriorView(true);
+  }
+
+  setInteriorView(show) {
+    this.inInterior = !!show && !!this.interiorScene;
+    const active = this.inInterior ? this.interiorScene : this.scene;
+    if (this.heroActor && this.heroActor.root.parent !== active) active.add(this.heroActor.root);
+    this.camHash = this.inInterior ? this.interiorHash : this.outdoorHash;
+    this._camInit = false; this._camClip = 99;
+  }
+
+  closeInterior() {
+    this.setInteriorView(false);
+    if (this.interiorScene) disposeInteriorScene(this.interiorScene);
+    this.interiorScene = null;
+    this.interiorHash = null;
+  }
+
   // --------------------------------------------------------- МАШИНА ИГРОКА --
   setPlayerCar(def) {
     if (this.playerMesh) {
@@ -786,10 +817,10 @@ export class Renderer {
     if (request !== this._heroRequest) { actor.dispose(); return false; }
     // Временный водитель делит текстуры с текущим героем.
     this.clearDriver();
-    if (this.heroActor) { this.scene.remove(this.heroActor.root); this.heroActor.dispose(); }
+    if (this.heroActor) { this.heroActor.root.removeFromParent(); this.heroActor.dispose(); }
     this.heroActor = actor; this.heroId = id;
     actor.root.visible = this.heroVisible;
-    this.scene.add(actor.root);
+    (this.inInterior && this.interiorScene ? this.interiorScene : this.scene).add(actor.root);
     return true;
   }
 
@@ -837,7 +868,7 @@ export class Renderer {
   }
 
   moveCarCamera(dx, dy) {
-    this.driveLookYaw = wrapAngle(this.driveLookYaw - dx * 0.006);
+    this.driveLookYaw = turnLook(this.driveLookYaw, dx);
     this.driveLookHeight = THREE.MathUtils.clamp(this.driveLookHeight + dy * 0.012, -1, 3);
   }
 
@@ -850,7 +881,10 @@ export class Renderer {
     else if (allowed < this._camClip) this._camClip = allowed;
     else this._camClip = damp(this._camClip, allowed, 2.5, dt);
     const d = Math.min(flat, this._camClip);
-    this.camera.position.set(hero.x - c * d, (hero.y || 0) + 1.08 + distance * Math.sin(pitch), hero.z - s * d);
+    const height = (hero.y || 0) + 1.08 + distance * Math.sin(pitch);
+    this.camera.position.set(hero.x - c * d, this.inInterior ? Math.min(height, 3.2) : height, hero.z - s * d);
+    // В тесном углу лучше временно скрыть модель, чем показать камеру внутри головы.
+    if (this.heroActor) this.heroActor.root.visible = this.heroVisible && (!this.inInterior || d >= 0.75);
     this.camera.lookAt(hero.x, (hero.y || 0) + 1.05, hero.z);
     this.camYaw = yaw;
     if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
@@ -1090,7 +1124,7 @@ export class Renderer {
     if (!hash) return maxD;
     const out = this._camCand || (this._camCand = []);
     hash.query(x + dx * maxD * 0.5, z + dz * maxD * 0.5, maxD * 0.5 + 2, out);
-    const pad = 0.45;
+    const pad = this.inInterior ? 0.05 : 0.45;
     let best = 1;
     const sx = dx * maxD, sz = dz * maxD;
     for (let i = 0; i < out.length; i++) {
@@ -1116,7 +1150,7 @@ export class Renderer {
       }
       if (t0 < best) best = t0;
     }
-    return Math.max(1.8, best * maxD);
+    return Math.max(this.inInterior ? 0.15 : 1.8, best * maxD);
   }
 
   _followSun(car) {
@@ -1204,7 +1238,7 @@ export class Renderer {
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.inInterior && this.interiorScene ? this.interiorScene : this.scene, this.camera);
   }
 
   /** Прогрев: компиляция всех шейдеров до старта, чтобы не было фризов в игре */

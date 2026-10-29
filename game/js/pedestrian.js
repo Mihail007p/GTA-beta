@@ -100,7 +100,8 @@ export function stepPedestrian(hero, input, dt, city, hash, car, def, traffic) {
       hash.query(hero.x, hero.z, HERO_RADIUS + 0.1, candidates);
       let hit = circleVsAABBs(hero.x, hero.z, HERO_RADIUS, candidates);
       if (hit) { resolve(hero, hit); continue; }
-      hit = circleVsCar(hero.x, hero.z, HERO_RADIUS, car, def.length || 4.4, def.width || 1.9);
+      // В помещении машины нет; та же физика работает только со стенами и мебелью.
+      hit = car && def ? circleVsCar(hero.x, hero.z, HERO_RADIUS, car, def.length || 4.4, def.width || 1.9) : null;
       if (hit) { resolve(hero, hit); continue; }
       if (traffic) {
         for (const t of traffic.cars) {
@@ -117,5 +118,5 @@ export function stepPedestrian(hero, input, dt, city, hash, car, def, traffic) {
   hero.speed = Math.min(RUN_SPEED, Math.hypot(hero.x - beforeX, hero.z - beforeZ) / dt);
   hero.running = !!input.run && hero.speed > 2.15;
   if (Math.hypot(hero.vx, hero.vz) > 0.08) hero.heading = dampAngle(hero.heading, Math.atan2(hero.vz, hero.vx), 12, dt);
-  hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
+  hero.y = !city || isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
 }

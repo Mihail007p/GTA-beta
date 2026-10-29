@@ -40,6 +40,7 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
   mask-image: radial-gradient(ellipse at 50% 52%, transparent 38%, #000 80%);
 }
 #fx-hit { background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 40, 40, 0.55)); opacity: 0; }
+#room-fade { position: fixed; inset: 0; z-index: 9; pointer-events: none; background: #080b0d; opacity: 0; }
 
 /* -------------------------------------------------------------------- HUD */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
@@ -301,6 +302,7 @@ body.playing #toast { top: auto; bottom: 104px; }
 #vehicle-action span { font-size: 9px; font-weight: 700; color: #b7d7e0; }
 #vehicle-action:active { background: rgba(27, 125, 150, .8); }
 body.on-foot #speedo, body.on-foot #fx-speed { display: none; }
+body.in-interior #minimap, body.in-interior #chain, body.in-interior #drift-live { display: none !important; }
 .foot-controls { position: absolute; inset: 0; }
 .controls[hidden], .foot-controls[hidden], .foot-stick[hidden], .foot-stick-ghost[hidden] { display: none !important; }
 .foot-stick-zone { position: absolute; z-index: 1; left: 0; bottom: 0; width: 46%; height: 78%; pointer-events: auto; touch-action: none; }

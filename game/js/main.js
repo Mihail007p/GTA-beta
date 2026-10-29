@@ -7,7 +7,8 @@
 // ============================================================================
 import { CONFIG, MS_TO_KMH } from './config.js';
 import { generateCity, buildSpatialHash, isOnRoad, nearestRoadAxis } from './city.js';
-import { makeCarState, stepCar, damp, clamp, wrapAngle } from './car-physics.js';
+import { makeCarState, stepCar, damp, clamp } from './car-physics.js';
+import { turnLook } from './look-controls.js';
 import { CARS, carById } from './cars.js';
 import { preloadCarModel } from './car-model.js';
 import { colliderOf, collideWorld, collideTraffic } from './collision.js';
@@ -19,8 +20,9 @@ import { audio } from './audio.js';
 import { TouchInput } from './input.js';
 import { FootInput } from './foot-input.js';
 import { CHARACTERS } from './characters.js';
-import { makePedestrian, stepPedestrian, findExitSpot, carIsStopped, stopParkedCar, circleVsCar, HERO_RADIUS } from './pedestrian.js';
+import { makePedestrian, stepPedestrian, findExitSpot, carIsStopped, stopParkedCar, circleVsCar, carEntryDistance, HERO_RADIUS } from './pedestrian.js';
 import { VehicleWorld } from './vehicles.js';
+import { makeEntrances, nearestEntrance, makeInteriorLayout, makeInteriorHash, nearInteriorExit, findReturnSpot } from './interiors.js';
 import { UI } from './ui.js';
 
 const ui = new UI();
@@ -29,6 +31,8 @@ let R = null, city, hash, traffic, input, footInput;
 let car, def, col, g, hero, vehicles;
 let onFoot = true;
 let pendingEntry = null, driverEvent = null;
+let entrances = [], interior = null, roomTransition = null;
+let doorsTipShown = false;
 const previewHero = { x: 0, z: 0, y: 0, heading: 0.6, speed: 0, running: false };
 let state = 'loading';
 let garageReturn = 'menu';
@@ -67,11 +71,13 @@ async function boot() {
   await nextFrame();
   city = generateCity(CONFIG.city);
   hash = buildSpatialHash(city.colliders, 30);
-  R.camHash = hash;
+  R.camHash = R.outdoorHash = hash;
+  entrances = makeEntrances(city, hash);
 
   ui.setLoading(0.4, 'Дома и улицы…');
   await nextFrame();
   R.buildCity(city);
+  R.buildEntrances(city, entrances);
   ui.buildMinimap(city);
 
   ui.setLoading(0.6, 'Трафик…');
@@ -105,7 +111,7 @@ async function boot() {
   ui.syncSettings(save);
   ui.setLoading(1, 'Готово');
   await nextFrame();
-  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get vehicles() { return vehicles; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get pendingEntry() { return pendingEntry; }, get g() { return g; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
+  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get vehicles() { return vehicles; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get pendingEntry() { return pendingEntry; }, get entrances() { return entrances; }, get interior() { return interior; }, get roomTransition() { return roomTransition; }, get city() { return city; }, get g() { return g; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
   await waitStartTap();
   goMenu();
   lastNow = performance.now();
@@ -116,6 +122,10 @@ async function boot() {
 function newRun() {
   const s = city.start;
   const stats = car ? car.stats : undefined;
+  cancelRoomTransition();
+  interior = null;
+  ui.setInside(null);
+  if (R) R.closeInterior();
   if (vehicles) vehicles.dispose();
   if (R) R.clearDriver();
   pendingEntry = driverEvent = null;
@@ -154,7 +164,7 @@ function setActiveCar(id, initial = false) {
   }
   // При смене гаражной машины не оставляем стоящего рядом героя внутри кузова.
   const own = vehicles.own.car;
-  if (onFoot && hero && circleVsCar(hero.x, hero.z, HERO_RADIUS, own, ownDef.length || 4.4, ownDef.width || 1.9)) {
+  if (onFoot && !interior && hero && circleVsCar(hero.x, hero.z, HERO_RADIUS, own, ownDef.length || 4.4, ownDef.width || 1.9)) {
     const spot = findExitSpot(own, ownDef, hash, traffic, vehicles.ownProxy);
     if (spot) { hero.x = spot.x; hero.z = spot.z; hero.vx = hero.vz = 0; }
   }
@@ -162,6 +172,14 @@ function setActiveCar(id, initial = false) {
 
 /** Вернуть машину на ближайшую полосу (правую по ходу движения) */
 function respawn() {
+  if (roomTransition) return;
+  if (interior) {
+    const p = interior.layout.spawn;
+    hero = makePedestrian(p.x, p.z, p.heading);
+    R._camInit = false; ui.hint('');
+    ui.toast('Вернулись к выходу из помещения');
+    return;
+  }
   if (onFoot) {
     const spot = findExitSpot(car, def, hash, traffic);
     if (!spot) { ui.toast('Рядом с машиной нет свободного места'); return; }
@@ -198,7 +216,9 @@ function respawn() {
 
 // ---------------------------------------------------------------- ЭКРАНЫ --
 function goMenu() {
+  cancelRoomTransition();
   state = 'menu';
+  R.setInteriorView(false);
   // Если игрок вышел в меню во время короткого перехода, он остаётся пешком.
   pendingEntry = driverEvent = null;
   R.clearDriver();
@@ -216,8 +236,10 @@ function goMenu() {
 }
 
 function goGarage() {
+  cancelRoomTransition();
   garageReturn = state === 'pause' ? 'pause' : 'menu';
   state = 'garage';
+  R.setInteriorView(false);
   if (R.playerDef !== vehicles.own.def) R.setPlayerCar(vehicles.own.def);
   R.orbit = { a: R.orbit ? R.orbit.a : 0.6, r: 6.3, h: 1.5, speed: 0.22, frameLeft: true, lookY: 0.62 };
   R.showHero(false);
@@ -230,6 +252,7 @@ function goGarage() {
 
 function goCharacter() {
   state = 'character';
+  R.setInteriorView(false);
   R.orbit = { a: 0.6, r: 3.6, h: 1.25, speed: 0.20, frameLeft: true, lookY: 0.95, hero: true };
   if (R.playerMesh) R.playerMesh.visible = false;
   R.showHero(false);
@@ -257,12 +280,15 @@ function leaveGarage() {
 function goPlay() {
   state = 'play';
   R.orbit = null;
+  R.setInteriorView(!!interior);
   R._camInit = false;
   if (R.playerMesh) R.playerMesh.visible = true;
-  input.setActive(!onFoot && !pendingEntry);
-  footInput.setActive(onFoot && !pendingEntry);
+  input.setActive(!onFoot && !pendingEntry && !roomTransition);
+  footInput.setActive(onFoot && !pendingEntry && !roomTransition);
+  ui.setInside(interior?.layout.kind || null);
   ui.setOnFoot(onFoot);
   if (pendingEntry) ui.setVehicleAction('busy');
+  if (roomTransition) ui.setVehicleAction('none');
   R.showHero(onFoot && R.heroId === save.selectedCharacter);
   if (onFoot && R.heroId !== save.selectedCharacter) {
     ui.toast('Загружаем героя…');
@@ -272,6 +298,10 @@ function goPlay() {
     });
   }
   ui.show('play');
+  if (!doorsTipShown && onFoot && !interior && !pendingEntry && !roomTransition) {
+    doorsTipShown = true;
+    ui.toast('Кольца у дверей — вход в дома и магазины');
+  }
   audio.resume();
   lastNow = performance.now();
   acc = 0;
@@ -332,12 +362,89 @@ function stepDriver(dt) {
   if (event.elapsed > 4.5) { R.clearDriver(); driverEvent = null; }
 }
 
+// Один контекстный выбор для подписи кнопки и для самого нажатия.
+function footAction() {
+  if (interior) return nearInteriorExit(hero, interior.layout) ? { mode: 'room-exit' } : { mode: 'none' };
+  const door = nearestEntrance(hero, entrances);
+  const vehicle = vehicles.nearest(hero);
+  if (door && (!vehicle || Math.hypot(hero.x - door.x, hero.z - door.z) <= carEntryDistance(hero, vehicle.car, vehicle.def))) {
+    return { mode: 'enter-' + door.kind, door };
+  }
+  const occupied = vehicle?.ref && !vehicle.ref.parked && !vehicle.ref.playerControlled;
+  return { mode: occupied ? 'hijack' : 'enter', vehicle };
+}
+
+// Плавное затемнение останавливается на паузе, а при выходе в меню/гараж
+// отменяется в текущем безопасном состоянии (до или после смены сцены).
+function cancelRoomTransition() {
+  roomTransition = null;
+  ui.roomFade(0);
+}
+function startRoomTransition(change) {
+  if (roomTransition) return;
+  hero.vx = hero.vz = hero.speed = 0;
+  footInput.setActive(false);
+  ui.setVehicleAction('none');
+  roomTransition = { elapsed: 0, switched: false, change };
+}
+function stepRoomTransition(dt) {
+  const t = roomTransition;
+  if (!t) return;
+  t.elapsed += dt;
+  if (!t.switched && t.elapsed >= 0.22) {
+    t.switched = true;
+    try { t.change(); }
+    catch (err) {
+      console.error('[interior]', err);
+      R.setInteriorView(!!interior);
+      ui.toast('Не удалось открыть помещение');
+    }
+  }
+  ui.roomFade(Math.max(0, Math.min(1, t.elapsed < 0.22 ? t.elapsed / 0.22 : (0.44 - t.elapsed) / 0.22)));
+  if (t.elapsed >= 0.44) {
+    cancelRoomTransition();
+    if (state === 'play' && onFoot && !pendingEntry) footInput.setActive(true);
+  }
+}
+function enterInterior(door) {
+  const outside = { x: hero.x, z: hero.z, heading: hero.heading, camYaw: hero.camYaw, camPitch: hero.camPitch };
+  startRoomTransition(() => {
+    const layout = makeInteriorLayout(door.kind), roomHash = makeInteriorHash(layout);
+    R.openInterior(layout, roomHash, door.id);
+    interior = { door, outside, layout, hash: roomHash };
+    hero = makePedestrian(layout.spawn.x, layout.spawn.z, layout.spawn.heading);
+    R.updateHero(hero, 0); R.showHero(true);
+    driverEvent = null; R.clearDriver();
+    ui.setInside(door.kind); ui.hint('');
+    ui.toast('Чтобы выйти, подойдите к двери');
+  });
+}
+function exitInterior() {
+  const room = interior;
+  const spot = findReturnSpot(room.door, room.outside, hash, car, def, traffic);
+  if (!spot) { ui.toast('Выход занят. Попробуйте ещё раз'); return; }
+  startRoomTransition(() => {
+    const saved = room.outside;
+    hero = makePedestrian(spot.x, spot.z, saved.heading);
+    hero.camYaw = saved.camYaw; hero.camPitch = saved.camPitch;
+    hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
+    interior = null;
+    R.closeInterior();
+    R.updateHero(hero, 0); R.showHero(true);
+    ui.setInside(null); ui.hint('');
+    ui.toast('Вы на улице');
+  });
+}
+
 // Действие на клавиатуре — E, на телефоне — контекстная кнопка.
 function toggleVehicle() {
-  if (state !== 'play' || pendingEntry) return;
+  if (state !== 'play' || pendingEntry || roomTransition) return;
   if (onFoot) {
-    const target = vehicles.nearest(hero);
-    const result = vehicles.enter(target);
+    const action = footAction();
+    if (action.mode === 'room-exit') { exitInterior(); return; }
+    if (interior) { ui.toast('Подойдите к выходу'); return; }
+    if (action.door) { enterInterior(action.door); return; }
+    const result = vehicles.enter(action.vehicle);
     if (!result.ok) {
       ui.toast(result.reason === 'too-fast'
         ? 'Машина тормозит. Подойдите и нажмите ещё раз'
@@ -537,6 +644,7 @@ function loop(now) {
 function frame(dt, now) {
   time += dt;
   const playing = state === 'play';
+  if (playing && roomTransition) stepRoomTransition(dt);
   if (playing && pendingEntry) {
     pendingEntry.elapsed += dt;
     if (pendingEntry.elapsed >= 0.9) finishVehicleEntry();
@@ -564,19 +672,23 @@ function frame(dt, now) {
     }
     if (steps >= PH.maxStepsPerFrame) acc = 0;
     if (!isFinite(car.x) || !isFinite(car.z) || !isFinite(car.vx)) respawn();
-  } else if (playing && onFoot && !pendingEntry) {
+  } else if (playing && onFoot && !pendingEntry && !roomTransition) {
     inp = footInput.sample();
     if (inp.reset && !fx.wasReset) respawn();
     fx.wasReset = inp.reset;
-    hero.camYaw = wrapAngle(hero.camYaw - inp.lookX * 0.006);
+    hero.camYaw = turnLook(hero.camYaw, inp.lookX);
     hero.camPitch = clamp(hero.camPitch + inp.lookY * 0.004, -0.12, 0.72);
-    stepPedestrian(hero, inp, dt, city, hash, car, def, traffic);
+    if (interior) stepPedestrian(hero, inp, dt, null, interior.hash, null, null, null);
+    else stepPedestrian(hero, inp, dt, city, hash, car, def, traffic);
   }
 
-  // Синхронизируем инстанс угнанной машины до симуляции остального трафика.
-  vehicles.sync();
-  stepTraffic(traffic, city, Math.min(dt, 0.05), CONFIG.traffic, onFoot && playing ? hero : car, onFoot && playing ? car : null);
-  if (playing) stepDriver(dt);
+  // Пока игрок в помещении или в переходе, наружный мир не меняется:
+  // припаркованная машина и точка выхода не оказываются под трафиком.
+  if (!interior && !roomTransition) {
+    vehicles.sync();
+    stepTraffic(traffic, city, Math.min(dt, 0.05), CONFIG.traffic, onFoot && playing ? hero : car, onFoot && playing ? car : null);
+    if (playing) stepDriver(dt);
+  }
 
   if (driving) {
     const res = updateGameplay(g, dt, car, traffic.cars, frameImpact);
@@ -600,31 +712,29 @@ function frame(dt, now) {
   shake = damp(shake, 0, CONFIG.camera.shakeDecay, dt);
   // В игре гаражная машина остаётся там, где её оставили. В меню/гараже
   // показываем её как витрину в точке текущего игрока.
-  R.updatePlayer(playing ? vehicles.own.car : car, dt, playing && vehicles.current !== vehicles.own ? null : visual);
+  if (!R.inInterior) R.updatePlayer(playing ? vehicles.own.car : car, dt, playing && vehicles.current !== vehicles.own ? null : visual);
   if (state === 'character') {
     previewHero.x = car.x; previewHero.z = car.z; previewHero.y = car.onRoad === false ? 0.16 : 0;
     R.updateHero(previewHero, dt, true);
   } else if (onFoot && playing) R.updateHero(hero, dt);
   if (playing && onFoot) R.updateFootCamera(hero, dt);
   else R.updateCamera(car, dt, shake);
-  R.updateTraffic(traffic.cars, !playing);
-  R.updateCheckpoints(g.checkpoints, time);
-  R.updateParticles(dt);
+  if (!R.inInterior) {
+    R.updateTraffic(traffic.cars, !playing);
+    R.updateCheckpoints(g.checkpoints, time);
+    R.updateParticles(dt);
+  }
   R.adaptPerformance(dt);
   R.render();
 
   if (playing) {
-    if (onFoot && !pendingEntry) {
-      const target = vehicles.nearest(hero);
-      const occupied = target?.ref && !target.ref.parked && !target.ref.playerControlled;
-      ui.setVehicleAction(occupied ? 'hijack' : 'enter');
-    }
+    if (onFoot && !pendingEntry) ui.setVehicleAction(roomTransition ? 'none' : footAction().mode);
     const st = save.settings;
     const player = onFoot ? hero : car;
     ui.updateHud({
-      car: player, def, g, dt, onFoot,
+      car: player, def, g, dt, onFoot, interior: interior?.layout.kind || null,
       money: save.money,
-      nearest: nearestCheckpoint(g, player.x, player.z),
+      nearest: interior ? null : nearestCheckpoint(g, player.x, player.z),
       camYaw: R.camYaw,
       fpsText: st.showFps ? `${Math.round(R.fps)} FPS · ${R.renderW}×${R.renderH} · ${R.drawCalls} dc` : '',
     });
