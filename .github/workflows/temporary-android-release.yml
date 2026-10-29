@@ -1,0 +1,25 @@
+# One-time transfer of the already signed public APK to its GitHub release.
+# No signing key or password is present in this workflow or repository.
+name: Transfer Android release APK
+on:
+  push:
+    branches: [arena/fa2baa49-gta-beta]
+    paths: [release-transfer/OpenStreet-v0.13.0.apk]
+permissions:
+  contents: write
+jobs:
+  upload:
+    if: contains(github.event.head_commit.message, '[openstreet-upload-once]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify and attach the signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$RUNNER_TEMP/OpenStreet-v0.13.0.apk"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/release-transfer/OpenStreet-v0.13.0.apk?ref=$GITHUB_SHA" > "$apk"
+          echo "49b21d46ee4cafc899367701c92316336c5b0f8073b289539859850078322357  $apk" | sha256sum -c -
+          gh release upload v0.13.0-android.1 "$apk" --repo "$GITHUB_REPOSITORY"
