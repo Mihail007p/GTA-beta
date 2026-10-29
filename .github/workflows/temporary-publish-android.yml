@@ -24,6 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          trap 'echo "::error title=Release upload check::Command failed at script line $LINENO."' ERR
           repo="$GITHUB_REPOSITORY"
           tag='v0.13.1-android.1'
           expected_commit='d97b2ee5b1612a9936468a6b1abf291637b673a3'
@@ -31,16 +32,20 @@ jobs:
           conclusion="$(gh api "repos/$repo/actions/runs/40812793793" --jq .conclusion)"
           test "$actual_commit" = "$expected_commit"
           test "$conclusion" = success
+          echo '::notice title=Release upload check::Verified source build commit and result.'
           release="$(gh release view "$tag" --repo "$repo" --json isDraft,targetCommitish,tagName)"
           test "$(jq -r .isDraft <<<"$release")" = true
           test "$(jq -r .targetCommitish <<<"$release")" = "$expected_commit"
           test "$(jq -r .tagName <<<"$release")" = "$tag"
+          echo '::notice title=Release upload check::Draft release target verified.'
           cd "$RUNNER_TEMP/openstreet-release"
           test -f OpenStreet-v0.13.1.apk
           test -f SHA256SUMS.txt
           test -f signature.txt
+          echo "::notice title=Release artifact contents::$(find . -maxdepth 2 -type f -printf '%p;' | sort)"
           test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
           sha256sum -c SHA256SUMS.txt
+          echo '::notice title=Release upload check::Artifact checksum verified.'
           grep -Fq 'Verified using v1 scheme (JAR signing): true' signature.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signature.txt
           grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' signature.txt
