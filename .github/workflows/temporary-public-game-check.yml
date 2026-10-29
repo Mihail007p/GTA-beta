@@ -1,0 +1,68 @@
+name: Temporary public game check
+on:
+  push:
+    paths:
+      - '.github/workflows/temporary-public-game-check.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Play the public browser version online and offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/public-game-test" --no-audit --no-fund playwright-core@1.64.1
+          cat > "$RUNNER_TEMP/public-game-test/check.cjs" <<'NODE'
+          const { chromium } = require('playwright-core');
+          const assert = require('node:assert/strict');
+          (async () => {
+            const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
+              args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+            const context = await browser.newContext({ viewport: { width: 820, height: 370 }, isMobile: true, hasTouch: true });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', e => errors.push(e.message));
+            page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+            const wait = f => page.waitForFunction(f, null, { timeout: 120000 });
+            const start = async () => {
+              await wait(() => !!window.__game);
+              if (await page.evaluate(() => __game.state === 'loading')) await page.locator('#loading').tap();
+              await wait(() => __game.state === 'menu');
+              await page.locator('#btn-play').tap();
+              await wait(() => __game.state === 'play' && __game.R.heroVisible && __game.R.crowdActors.length === 4);
+              await page.locator('#btn-bag').tap();
+              await wait(() => __game.state === 'life');
+              assert.equal(await page.locator('#life-title').textContent(), 'Рюкзак');
+              assert.equal(await page.locator('[data-action="use"][data-id="apple"]').count(), 1);
+            };
+            try {
+              const url = 'https://rawcdn.githack.com/Mihail007p/GTA-beta/b443e933ab06f8715cffe114c31edccbc8f7b938/game/index.html';
+              const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              assert.equal(response.status(), 200);
+              const notice = page.getByRole('button', { name: 'Open the page' });
+              if (await notice.count()) await notice.click();
+              await start();
+              await wait(() => !!navigator.serviceWorker.controller);
+              const cached = await page.evaluate(async () => {
+                const reg = await navigator.serviceWorker.ready;
+                const own = (await caches.keys()).find(k => k.startsWith(`openstreet:${reg.scope}:`));
+                const cache = await caches.open(own);
+                const names = ['index.html', 'js/life.js', 'assets/characters/hero-1-smart.glb', 'assets/characters/hero-2-smart.glb', 'assets/characters/citizen-1.glb', 'assets/characters/citizen-2.glb'];
+                return { own, files: await Promise.all(names.map(async name => !!(await cache.match(name)))),
+                  isGameHtml: (await (await cache.match('index.html')).text()).includes('id="scene"') };
+              });
+              assert.ok(cached.own.endsWith(':v15'));
+              assert.deepEqual(cached.files, [true, true, true, true, true, true]);
+              assert.equal(cached.isGameHtml, true);
+              await context.setOffline(true);
+              await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+              await start();
+              assert.deepEqual(errors, []);
+              console.log('::notice title=Public game::Notice, first play, cached resources and offline replay verified in mobile Chromium.');
+            } finally { await context.close(); await browser.close(); }
+          })().catch(e => { console.error(e.stack || e); process.exit(1); });
+          NODE
+          node "$RUNNER_TEMP/public-game-test/check.cjs"
