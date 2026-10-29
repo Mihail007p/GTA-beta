@@ -1,0 +1,77 @@
+name: Temporary signing helper public test
+on:
+  push:
+    paths:
+      - '.github/workflows/temporary-signing-helper-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare public files with committed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://rawcdn.githack.com/Mihail007p/GTA-beta/b5892d80a0809d737051e5367a6402caf1277252/android/tools/signing-helper'
+          for f in index.html keygen.js ui.js style.css forge.min.js; do
+            curl --retry 4 --fail --silent --show-error "$base/$f" -o "$RUNNER_TEMP/$f"
+            cmp "$RUNNER_TEMP/$f" "android/tools/signing-helper/$f"
+          done
+      - name: Test public link in Chromium with a disposable test key
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/signing-test" --no-audit --no-fund playwright-core@1.64.1
+          cat > "$RUNNER_TEMP/signing-test/check.cjs" <<'NODE'
+          const {chromium} = require('playwright-core');
+          const assert = require('assert/strict');
+          const fs = require('fs');
+          const cp = require('child_process');
+          const os = require('os');
+          const path = require('path');
+          (async () => {
+            const browser = await chromium.launch({executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'], headless: true});
+            const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'openstreet-test-'));
+            try {
+              const context = await browser.newContext({viewport: {width: 393, height: 852}, isMobile: true, hasTouch: true});
+              const page = await context.newPage();
+              const errors = [], unexpected = [];
+              let generating = false;
+              page.on('pageerror', e => errors.push(e.message));
+              page.on('request', r => {
+                if (generating && (r.method() !== 'GET' || new URL(r.url()).hostname !== 'rawcdn.githack.com')) unexpected.push('unexpected network request');
+              });
+              page.on('dialog', d => d.accept());
+              const response = await page.goto('https://rawcdn.githack.com/Mihail007p/GTA-beta/b5892d80a0809d737051e5367a6402caf1277252/android/tools/signing-helper/index.html', {waitUntil:'domcontentloaded', timeout:60000});
+              assert.equal(response.status(), 200);
+              const notice = page.getByRole('button', {name: 'Open the page'});
+              if (await notice.count()) await notice.click();
+              await page.locator('#generate').waitFor({timeout: 60000});
+              assert.equal(await page.evaluate(() => window.isSecureContext && !!crypto.subtle), true);
+              await page.waitForLoadState('load');
+              generating = true;
+              await page.locator('#generate').click();
+              await page.locator('#result').waitFor({state:'visible',timeout:90000});
+              const key = await page.locator('#key-text').inputValue();
+              const password = await page.locator('#password-text').inputValue();
+              const fingerprint = await page.locator('#fingerprint').textContent();
+              assert.match(fingerprint, /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+              assert.match(password, /^[0-9a-f]{64}$/);
+              fs.writeFileSync(path.join(temp,'test.p12'), Buffer.from(key,'base64'), {mode:0o600});
+              fs.writeFileSync(path.join(temp,'test-pass'), password, {mode:0o600});
+              const details = cp.execFileSync('keytool', ['-list','-v','-storetype','PKCS12','-keystore',path.join(temp,'test.p12'),'-storepass:file',path.join(temp,'test-pass')], {encoding:'utf8'});
+              assert.ok(details.includes('Alias name: openstreet-release'));
+              assert.ok(details.includes(fingerprint));
+              assert.deepEqual(errors, []);
+              assert.deepEqual(unexpected, []);
+              console.log('Public helper, notice, secure generation and test keystore passed.');
+              await context.close();
+            } finally { await browser.close(); fs.rmSync(temp, {recursive:true,force:true}); }
+          })().catch(e => {console.error(e.message); process.exit(1);});
+          NODE
+          node "$RUNNER_TEMP/signing-test/check.cjs"
