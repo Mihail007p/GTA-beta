@@ -41,7 +41,8 @@ Android не установит обновление поверх этой ве�
 ### Подписанная сборка в GitHub Actions
 
 Workflow **Android signed APK** запускается вручную через вкладку Actions, а
-также при изменении `android/version.properties` или самого workflow. Он требует
+также при изменении `android/version.properties`, `android/app/build.gradle`
+или самого workflow. Он требует
 секреты репозитория `OPENSTREET_KEYSTORE_BASE64` (base64 PKCS#12) и
 `OPENSTREET_KEYSTORE_PASSWORD`. Ключ и пароль создаются во временном каталоге
 runner, удаляются после подписания и не публикуются; в артефакт попадают только

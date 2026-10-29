@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'android/version.properties'
+      - 'android/app/build.gradle'
       - '.github/workflows/android-signed.yml'
 
 permissions:
