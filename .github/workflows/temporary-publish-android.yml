@@ -1,0 +1,55 @@
+name: Temporary Android release upload
+on:
+  push:
+    paths:
+      - '.github/workflows/temporary-publish-android.yml'
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download verified build from merged main commit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: openstreet-android-0.13.1
+          path: ${{ runner.temp }}/openstreet-release
+          run-id: 40812793793
+          github-token: ${{ github.token }}
+      - name: Verify the draft and upload the APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          tag='v0.13.1-android.1'
+          expected_commit='d97b2ee5b1612a9936468a6b1abf291637b673a3'
+          actual_commit="$(gh api "repos/$repo/actions/runs/40812793793" --jq .head_sha)"
+          conclusion="$(gh api "repos/$repo/actions/runs/40812793793" --jq .conclusion)"
+          test "$actual_commit" = "$expected_commit"
+          test "$conclusion" = success
+          release="$(gh release view "$tag" --repo "$repo" --json isDraft,targetCommitish,tagName)"
+          test "$(jq -r .isDraft <<<"$release")" = true
+          test "$(jq -r .targetCommitish <<<"$release")" = "$expected_commit"
+          test "$(jq -r .tagName <<<"$release")" = "$tag"
+          cd "$RUNNER_TEMP/openstreet-release"
+          test -f OpenStreet-v0.13.1.apk
+          test -f SHA256SUMS.txt
+          test -f signature.txt
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum -c SHA256SUMS.txt
+          grep -Fq 'Verified using v1 scheme (JAR signing): true' signature.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signature.txt
+          grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true' signature.txt
+          grep -Fq 'Number of signers: 1' signature.txt
+          sha="$(sha256sum OpenStreet-v0.13.1.apk | cut -d ' ' -f 1)"
+          cert="$(awk -F ': ' '/Signer #1 certificate SHA-256 digest:/ {print $2}' signature.txt)"
+          [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$cert" =~ ^[0-9a-f]{64}$ ]]
+          test "$cert" != 'dc07da5899ad837cc39f6bb70fc29e3f4720caaa10aabf3dd041355bc0292659'
+          echo "::notice title=APK SHA-256::$sha"
+          echo "::notice title=Signing certificate SHA-256::$cert"
+          gh release upload "$tag" --repo "$repo" OpenStreet-v0.13.1.apk
