@@ -20,8 +20,8 @@ jobs:
           set -euo pipefail
           apk="$RUNNER_TEMP/OpenStreet-v0.13.0.apk"
           err="$RUNNER_TEMP/upload-error.txt"
-          if ! gh api -H 'Accept: application/vnd.github.raw+json' \
-            "repos/$GITHUB_REPOSITORY/contents/release-transfer/OpenStreet-v0.13.0.apk?ref=$GITHUB_SHA" > "$apk" 2> "$err"; then
+          if ! curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/release-transfer/OpenStreet-v0.13.0.apk" -o "$apk" 2> "$err"; then
             echo "::error title=Download failed::$(tr '\n' ' ' < "$err" | tail -c 700)"; exit 1
           fi
           if ! echo "49b21d46ee4cafc899367701c92316336c5b0f8073b289539859850078322357  $apk" | sha256sum -c -; then
