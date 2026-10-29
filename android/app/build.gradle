@@ -1,0 +1,53 @@
+plugins { id 'com.android.application' }
+
+def versions = new Properties()
+rootProject.file('version.properties').withInputStream { versions.load(it) }
+def releaseKey = System.getenv('OPENSTREET_KEYSTORE')
+def releasePasswordFile = System.getenv('OPENSTREET_STOREPASS_FILE')
+if (!!releaseKey != !!releasePasswordFile) {
+    throw new GradleException('Set both OPENSTREET_KEYSTORE and OPENSTREET_STOREPASS_FILE, or neither.')
+}
+
+def releasePassword = releasePasswordFile ? file(releasePasswordFile).getText('UTF-8').trim() : null
+android {
+    namespace versions.APP_ID
+    compileSdk versions.COMPILE_SDK.toInteger()
+    defaultConfig {
+        applicationId versions.APP_ID
+        minSdk versions.MIN_SDK.toInteger()
+        targetSdk versions.TARGET_SDK.toInteger()
+        versionCode versions.VERSION_CODE.toInteger()
+        versionName versions.VERSION_NAME
+    }
+    signingConfigs {
+        if (releaseKey) {
+            release {
+                storeFile file(releaseKey)
+                storePassword releasePassword
+                keyAlias System.getenv('OPENSTREET_KEY_ALIAS') ?: 'openstreet-release'
+                keyPassword releasePassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (releaseKey) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    sourceSets { main.assets.srcDir layout.buildDirectory.dir('generated/gameAssets') }
+}
+
+// Keep one source of truth for web and APK; omit tests and development tools.
+def copyGameAssets = tasks.register('copyGameAssets', Sync) {
+    from(rootProject.file('../game')) {
+        include 'index.html', 'manifest.json', 'sw.js', 'README.md', 'ASSET-CREDITS.md'
+        include 'css/**', 'js/**', 'icons/**', 'vendor/**', 'assets/**'
+    }
+    into(layout.buildDirectory.dir('generated/gameAssets/game'))
+}
+tasks.named('preBuild').configure { dependsOn(copyGameAssets) }

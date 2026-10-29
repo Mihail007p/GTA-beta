@@ -239,6 +239,9 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
 .seg button { border: none; background: transparent; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .seg button.on { background: var(--accent); color: #04121a; }
 .fatal-text { font-size: 14px; line-height: 1.5; color: var(--muted); }
+.credits-text { font-size: 13px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.credits-text p { margin: 8px 0; }
+.credits-text a { color: var(--accent); }
 
 /* ----------------------------------------------------------------- Гараж */
 #garage { justify-content: flex-end; align-items: stretch; }

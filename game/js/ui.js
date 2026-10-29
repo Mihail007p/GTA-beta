@@ -48,7 +48,7 @@ export class UI {
   // ------------------------------------------------------------- ЭКРАНЫ ---
   show(name) {
     this.screen = name;
-    for (const s of ['loading', 'menu', 'garage', 'character', 'settings', 'pause', 'fatal']) {
+    for (const s of ['loading', 'menu', 'garage', 'character', 'settings', 'credits', 'pause', 'fatal']) {
       $(s).classList.toggle('hidden', s !== name);
     }
     const playing = name === 'play';
@@ -88,6 +88,12 @@ export class UI {
     tap('pause-settings', () => this.openSettings('pause'));
     tap('pause-menu', () => this.h.menu && this.h.menu());
     tap('settings-back', () => this.show(this.settingsReturn));
+    tap('btn-credits', () => this.show('credits'));
+    tap('credits-back', () => this.show('settings'));
+    // В Android ссылки открываются системным браузером; в обычном браузере — в новой вкладке.
+    if (/[?&]androidApp=1(?:&|$)/.test(location.search)) {
+      for (const link of document.querySelectorAll('#credits a')) link.target = '_self';
+    }
     tap('garage-back', () => this.h.garageBack && this.h.garageBack());
     tap('car-prev', () => this.garageStep(-1));
     tap('car-next', () => this.garageStep(1));

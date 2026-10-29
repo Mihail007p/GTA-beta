@@ -1,0 +1,11 @@
+# Private Android signing material must never be committed.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pk8
+*.pem
+**/key.properties
+/OpenStreet-signing-private/
+__pycache__/
+*.pyc

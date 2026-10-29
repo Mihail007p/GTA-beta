@@ -2,13 +2,13 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v12';
+const CACHE_VERSION = 'v13';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
   // Не запрашиваем саму папку: Raw.githack отдаёт только конкретные файлы.
   './index.html', './css/style.css', './manifest.json',
-  './icons/icon-192.png', './icons/icon-512.png', './vendor/three.js', './vendor/THREE-LICENSE.txt',
+  './icons/icon-192.png', './icons/icon-512.png', './vendor/three.js', './vendor/THREE-LICENSE.txt', './vendor/MESHOPT-LICENSE.txt',
   './js/main.js', './js/config.js', './js/rng.js', './js/city.js', './js/car-physics.js', './js/cars.js',
   './js/collision.js', './js/traffic.js', './js/gameplay.js', './js/save.js', './js/textures.js',
   './js/car-model.js', './js/renderer.js', './js/audio.js', './js/input.js', './js/ui.js', './js/traffic-types.js',
