@@ -49,6 +49,8 @@ const PH = CONFIG.physics;
 
 const SHOT = /[?&]shot\b/.test(location.search);   // режим автотестов
 const NOAUDIO = /[?&]noaudio/.test(location.search);   // автотесты: в headless эмуляция звука отнимает CPU у рендера
+// Android-оболочка уже полноэкранная и содержит все файлы: отдельный SW ей не нужен.
+const ANDROID_APP = /[?&]androidApp=1(?:&|$)/.test(location.search);
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => r()));
 
 // ------------------------------------------------------------- ЗАГРУЗКА --
@@ -61,8 +63,10 @@ async function boot() {
       preserveDrawingBuffer: /[?&]shot\b/.test(location.search),   // для автотестов скриншотами
     });
   } catch (e) {
-    ui.fatal('Браузер не дал доступ к WebGL (3D-графике). Откройте игру в Chrome, обновите его, ' +
-      'или включите аппаратное ускорение. Подробности: ' + (e && e.message ? e.message : e));
+    ui.fatal((ANDROID_APP
+      ? 'Не удалось запустить 3D. Обновите Android System WebView и перезапустите игру. '
+      : 'Браузер не дал доступ к WebGL (3D-графике). Откройте игру в Chrome, обновите его или включите аппаратное ускорение. ') +
+      'Подробности: ' + (e && e.message ? e.message : e));
     return;
   }
   resize();
@@ -491,7 +495,7 @@ window.addEventListener('keydown', e => {
 // Поэтому: первое касание, ИГРАТЬ/ПРОДОЛЖИТЬ и отдельная кнопка в HUD.
 // Браузер/оболочка могут отказать; в таком случае игра остаётся доступной в окне.
 const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
-const FULL_DISPLAY = matchMedia('(display-mode: fullscreen)').matches;
+const FULL_DISPLAY = ANDROID_APP || matchMedia('(display-mode: fullscreen)').matches;
 const STANDALONE = FULL_DISPLAY || matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
 const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 let wasFullscreen = false;
@@ -864,8 +868,25 @@ window.addEventListener('pagehide', () => flushNow());
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('dblclick', (e) => e.preventDefault());
 
-// офлайн-режим: кэш всех файлов (работает на https и localhost)
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+// В APK ресурсы уже локальные, а старый SW-кэш мог бы скрыть файлы обновления.
+if (ANDROID_APP) {
+  // Android «Назад» закрывает вложенные экраны, ставит игру на паузу или возвращает в меню.
+  // false означает, что оболочка может спросить о выходе из приложения.
+  window.__openStreetAndroidBack = () => {
+    if (ui.screen === 'credits') { ui.show('settings'); return true; }
+    if (ui.screen === 'settings') { ui.show(ui.settingsReturn); return true; }
+    if (state === 'play') { goPause(); return true; }
+    if (state === 'pause') { goPlay(); return true; }
+    if (state === 'garage') { leaveGarage(); return true; }
+    if (state === 'character') { goMenu(); return true; }
+    return false;
+  };
+  window.__openStreetAndroidPause = () => {
+    if (state === 'play') goPause();
+    else { flushNow(); audio.suspend(); }
+  };
+} else if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  // В браузере офлайн-режим включается после первого открытия.
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 

@@ -57,6 +57,13 @@ try {
   root = current;
   await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
   await page.waitForFunction(() => window.__workerChanged, null, { timeout: 90000 });
+  // controllerchange может прийти до завершения асинхронного activate и очистки кэшей.
+  // Проверяем конечное состояние, а не скорость удаления на конкретном устройстве.
+  const scopedOld = oldOwn.filter(c => c.startsWith(ownScope));
+  await page.waitForFunction(async ({ currentCache, scopedOld }) => {
+    const keys = await caches.keys();
+    return keys.includes(currentCache) && scopedOld.every(k => !keys.includes(k));
+  }, { currentCache, scopedOld }, { timeout: 30000 });
   const newCaches = await page.evaluate(() => caches.keys());
   assert.ok(newCaches.includes(currentCache));
   for (const key of oldOwn.filter(c => c.startsWith(ownScope))) assert.ok(!newCaches.includes(key), 'старый кэш этого приложения должен быть заменён');

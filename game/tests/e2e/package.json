@@ -22,6 +22,7 @@
     "githack": "node githack-path.mjs",
     "hijack": "node hijack.mjs",
     "interiors": "node interiors.mjs",
+    "android-assets": "node android-assets.mjs",
     "fullscreen-fallback": "node fullscreen-fallback.mjs"
   },
   "devDependencies": {
