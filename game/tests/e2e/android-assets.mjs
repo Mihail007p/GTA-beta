@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const apk = path.resolve(process.env.APK_PATH || path.join(here, '../../../android/app/build/outputs/apk/release/OpenStreet-v0.13.0.apk'));
+const versionProperties = fs.readFileSync(path.join(here, '../../../android/version.properties'), 'utf8');
+const versionName = versionProperties.match(/^VERSION_NAME=(.+)$/m)?.[1]?.trim();
+if (!versionName) throw new Error('VERSION_NAME is missing from android/version.properties');
+const apk = path.resolve(process.env.APK_PATH || path.join(here, `../../../android/app/build/outputs/apk/release/OpenStreet-v${versionName}.apk`));
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'openstreet-apk-'));
 const missing = [], external = [], errors = [], loaded = new Set();
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',

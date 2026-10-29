@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">
+  <title>Новый ключ Open Street</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="forge.min.js"></script>
+  <script defer src="keygen.js"></script>
+  <script defer src="ui.js"></script>
+</head>
+<body>
+  <main>
+    <div class="tag">OPEN STREET · ANDROID</div>
+    <h1>Новый ключ для игры</h1>
+    <p class="lead">Создайте закрытый ключ на этом устройстве и сохраните его в GitHub Secrets. Страница ничего не отправляет сама.</p>
+    <div class="warning"><strong>Важно:</strong> этот ключ не совпадает с подписью первого APK. Для новой сборки старую установленную игру придётся удалить; её локальные сохранения могут потеряться.</div>
+
+    <section>
+      <h2><span>1</span> Создайте ключ</h2>
+      <p>Ключ и пароль появятся только на этом устройстве. Не закрывайте страницу, пока не скачаете резервные копии и не добавите оба секрета в GitHub.</p>
+      <button id="generate" class="primary" type="button">Создать новый ключ</button>
+      <p id="status" role="status" aria-live="polite">Создание может занять до минуты.</p>
+      <details id="restore-section">
+        <summary>Уже создавали ключ? Загрузить сохранённые файлы</summary>
+        <p>Если страница закрылась, выберите оба скачанных файла. Они останутся в браузере и не будут отправлены на сервер.</p>
+        <label for="restore-key">Файл ключа .p12</label>
+        <input id="restore-key" type="file" accept=".p12,.pfx,application/x-pkcs12">
+        <label for="restore-password">Файл пароля .txt</label>
+        <input id="restore-password" type="file" accept=".txt,text/plain">
+        <button id="restore" type="button">Открыть сохранённый ключ</button>
+      </details>
+    </section>
+
+    <div id="result" hidden>
+      <section>
+        <h2><span>2</span> Сохраните резервные копии</h2>
+        <p>Скачайте <strong>оба</strong> файла. Храните их приватно и отдельно друг от друга: они понадобятся, если GitHub Secrets потеряются. Не отправляйте их в чат.</p>
+        <div class="buttons">
+          <button id="download-key" type="button">Скачать ключ .p12</button>
+          <button id="download-password" type="button">Скачать пароль .txt</button>
+        </div>
+      </section>
+
+      <section>
+        <h2><span>3</span> Добавьте два секрета</h2>
+        <p>Откройте страницу GitHub в соседней вкладке. Для каждого секрета нажмите <strong>New repository secret</strong>, укажите имя и вставьте значение. Затем нажмите <strong>Add secret</strong>.</p>
+        <a class="github" href="https://github.com/Mihail007p/GTA-beta/settings/secrets/actions" target="_blank" rel="noopener noreferrer">Открыть секреты GitHub ↗</a>
+        <div class="secret">
+          <div class="label">Первый секрет — Name</div>
+          <code>OPENSTREET_KEYSTORE_BASE64</code>
+          <p>Нажмите кнопку и вставьте скопированное в поле <strong>Secret</strong>.</p>
+          <button id="copy-key" type="button">Скопировать ключ для GitHub</button>
+          <details><summary>Если копирование не сработало</summary><textarea id="key-text" readonly rows="3" aria-label="Ключ в формате base64"></textarea></details>
+        </div>
+        <div class="secret">
+          <div class="label">Второй секрет — Name</div>
+          <code>OPENSTREET_KEYSTORE_PASSWORD</code>
+          <p>Скопируйте пароль и вставьте его в поле <strong>Secret</strong>.</p>
+          <button id="copy-password" type="button">Скопировать пароль для GitHub</button>
+          <details><summary>Если копирование не сработало</summary><input id="password-text" type="text" readonly aria-label="Пароль ключа"></details>
+        </div>
+        <p id="copy-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="done">
+        <h2><span>✓</span> Готово</h2>
+        <p>Когда оба секрета добавлены и резервные файлы скачаны, вернитесь в чат и напишите только <strong>«готово»</strong>. Не присылайте значения секретов.</p>
+        <details><summary>Отпечаток сертификата (не является секретом)</summary><code id="fingerprint"></code></details>
+      </section>
+    </div>
+    <footer>Ключ создаётся в браузере через Web Crypto. Страница не сохраняет данные на сервере и не отправляет их автоматически.</footer>
+  </main>
+</body>
+</html>

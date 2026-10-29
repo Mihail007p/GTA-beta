@@ -26,6 +26,11 @@ android {
                 storePassword releasePassword
                 keyAlias System.getenv('OPENSTREET_KEY_ALIAS') ?: 'openstreet-release'
                 keyPassword releasePassword
+                // v1 keeps API 23 support; v2/v3 cover modern Android.
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing false
             }
         }
     }
