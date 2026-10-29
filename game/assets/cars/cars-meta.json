@@ -1,0 +1,321 @@
+{
+ "cayenne": {
+  "file": "cayenne.glb",
+  "length": 4.85,
+  "width": 2.21,
+  "height": 1.727,
+  "wheels": [
+   {
+    "name": "fl",
+    "x": 1.4869,
+    "y": 0.3717,
+    "z": -0.8038,
+    "r": 0.3717
+   },
+   {
+    "name": "fr",
+    "x": 1.4869,
+    "y": 0.3717,
+    "z": 0.8038,
+    "r": 0.3717
+   },
+   {
+    "name": "rl",
+    "x": -1.4916,
+    "y": 0.3717,
+    "z": -0.8038,
+    "r": 0.3717
+   },
+   {
+    "name": "rr",
+    "x": -1.4916,
+    "y": 0.3717,
+    "z": 0.8038,
+    "r": 0.3717
+   }
+  ],
+  "tris": 31298,
+  "prims": 39,
+  "kb": 745,
+  "cats": {
+   "head": [
+    "Light_Ref",
+    "Lights",
+    "Light_Glass"
+   ],
+   "trim": [
+    "Chassis",
+    "Badges",
+    "Plastic",
+    "mirros",
+    "grille_9",
+    "chrome",
+    "plate"
+   ],
+   "tire": [
+    "material",
+    "Tire",
+    "Disk"
+   ],
+   "interior": [
+    "internal"
+   ],
+   "glass": [
+    "GlassSurr",
+    "windows"
+   ],
+   "tail": [
+    "Red_glass"
+   ],
+   "paint": [
+    "CarPaint"
+   ],
+   "caliper": [
+    "Calipers"
+   ]
+  }
+ },
+ "gt3": {
+  "file": "gt3.glb",
+  "length": 4.57,
+  "width": 2.027,
+  "height": 1.286,
+  "wheels": [
+   {
+    "name": "fl",
+    "x": 1.2402,
+    "y": 0.3472,
+    "z": -0.7889,
+    "r": 0.3448
+   },
+   {
+    "name": "fr",
+    "x": 1.2402,
+    "y": 0.3472,
+    "z": 0.7888,
+    "r": 0.3448
+   },
+   {
+    "name": "rl",
+    "x": -1.2122,
+    "y": 0.3653,
+    "z": -0.7715,
+    "r": 0.3653
+   },
+   {
+    "name": "rr",
+    "x": -1.2122,
+    "y": 0.3653,
+    "z": 0.7715,
+    "r": 0.3653
+   }
+  ],
+  "tris": 48508,
+  "prims": 26,
+  "kb": 865,
+  "cats": {
+   "trim": [
+    "Porsche_911GT3TouringRewardRecycled_2022Grille3A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Grille4A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Grille5A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022BadgeB_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Base_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Carbon1_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Grille1A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Grille2A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Grille8A_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022LicensePlateDefaultA_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022ManufacturerPlateA_Material"
+   ],
+   "paint": [
+    "Porsche_911GT3TouringRewardRecycled_2022Coloured_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022Paint_Material"
+   ],
+   "interior": [
+    "Porsche_911GT3TouringRewardRecycled_2022InteriorTillingB_Material",
+    "Porsche_911GT3TouringRewardRecycled_2022InteriorB_Material"
+   ],
+   "head": [
+    "Porsche_911GT3TouringRewardRecycled_2022LightA_Material"
+   ],
+   "glass": [
+    "Porsche_911GT3TouringRewardRecycled_2022Window_Material"
+   ],
+   "tail": [
+    "RED_GLASS"
+   ],
+   "tire": [
+    "Porsche_911GT3TouringRewardRecycled_2022_Wheel1A_3D_3DWheel2C_Material"
+   ],
+   "caliper": [
+    "Porsche_911GT3TouringRewardRecycled_2022_CallipersCalliperA_Zone_Material"
+   ]
+  }
+ },
+ "f458": {
+  "file": "f458.glb",
+  "length": 4.53,
+  "width": 2.255,
+  "height": 1.235,
+  "wheels": [
+   {
+    "name": "fl",
+    "x": 1.1544,
+    "y": 0.3577,
+    "z": -0.8419,
+    "r": 0.3577
+   },
+   {
+    "name": "fr",
+    "x": 1.1536,
+    "y": 0.3604,
+    "z": 0.828,
+    "r": 0.3577
+   },
+   {
+    "name": "rl",
+    "x": -1.4938,
+    "y": 0.3577,
+    "z": -0.8207,
+    "r": 0.3577
+   },
+   {
+    "name": "rr",
+    "x": -1.4951,
+    "y": 0.3577,
+    "z": 0.8237,
+    "r": 0.3577
+   }
+  ],
+  "tris": 56474,
+  "prims": 37,
+  "kb": 763,
+  "cats": {
+   "interior": [
+    "Leather_red",
+    "Leather",
+    "Interior_dark",
+    "Carpet",
+    "Interior_light",
+    "Carbon_Fiber_interior",
+    "Ferrari_Yellow_interior",
+    "metal_gray_interior",
+    "Taillight_Glass_interior"
+   ],
+   "tail": [
+    "Taillight_Glass"
+   ],
+   "trim": [
+    "plastic_gray",
+    "metal_gray",
+    "Tires",
+    "metal_chrome",
+    "Carbon_Fiber",
+    "_0098_DodgerBlue",
+    "Ferrari_Yellow"
+   ],
+   "head": [
+    "Projector_Glass",
+    "Turn_Signal_LED"
+   ],
+   "glass": [
+    "Glass_Gray"
+   ],
+   "caliper": [
+    "Taillight_Glass_caliper"
+   ],
+   "paint": [
+    "Body_Color"
+   ],
+   "tire": [
+    "metal_gray_tire",
+    "Tires_tire",
+    "Ferrari_Yellow_tire",
+    "Interior_dark_tire"
+   ]
+  }
+ },
+ "cgt": {
+  "file": "cgt.glb",
+  "length": 4.61,
+  "width": 2,
+  "height": 1.164,
+  "wheels": [
+   {
+    "name": "fl",
+    "x": 1.2893,
+    "y": 0.334,
+    "z": -0.7951,
+    "r": 0.3313
+   },
+   {
+    "name": "fr",
+    "x": 1.2893,
+    "y": 0.334,
+    "z": 0.7952,
+    "r": 0.3319
+   },
+   {
+    "name": "rl",
+    "x": -1.4167,
+    "y": 0.3528,
+    "z": -0.7695,
+    "r": 0.3528
+   },
+   {
+    "name": "rr",
+    "x": -1.4167,
+    "y": 0.3529,
+    "z": 0.7694,
+    "r": 0.3528
+   }
+  ],
+  "tris": 49416,
+  "prims": 29,
+  "kb": 899,
+  "cats": {
+   "trim": [
+    "C1_Brand",
+    "C1_Base",
+    "Default_Material",
+    "C1_Grilla_F",
+    "C1_Grilla_Foor",
+    "C1_Color_Plastico_Negro",
+    "C1_Grilla1",
+    "C1_Carbon",
+    "C1_Grilla_Front_1",
+    "C1_Warning",
+    "C1_Grilla_2",
+    "C1_Grilla_N"
+   ],
+   "glass": [
+    "C1_Vidrios_Tr"
+   ],
+   "head": [
+    "C1_Light"
+   ],
+   "paint": [
+    "C1_Paint"
+   ],
+   "tail": [
+    "C1_Vidiro_Rojo"
+   ],
+   "engine": [
+    "C1_Engine",
+    "C1_Engine_2"
+   ],
+   "interior": [
+    "C1_Mat_In_Ex_1",
+    "C1_Gilla_Int",
+    "C1_Interior",
+    "C1_Bealt"
+   ],
+   "tire": [
+    "Porsche_CarreraGTLPClassic_2003_Wheel1A_3DWheel1A_Details_Material"
+   ],
+   "caliper": [
+    "Porsche_CarreraGTLPClassic_2003_CallipersCalliperA_Details_Material"
+   ]
+  }
+ }
+}

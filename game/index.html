@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1420">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="screen-orientation" content="landscape">
+  <title>Open Street — свободная езда по городу</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- CSS-эффекты поверх 3D (дешевле пост-процессинга) -->
+  <div id="fx-vignette"></div>
+  <div id="fx-speed"></div>
+  <div id="fx-hit"></div>
+  <div id="room-fade" aria-hidden="true"></div>
+
+  <!-- ============================ HUD ============================ -->
+  <div id="hud" class="hidden">
+    <div class="hud-top-left">
+      <button class="icon-btn" id="btn-pause" aria-label="Пауза">❚❚</button>
+      <button class="icon-btn" id="btn-reset" aria-label="Вернуть на дорогу">⟲</button>
+      <button class="icon-btn hidden" id="hud-fs" aria-label="На весь экран" title="На весь экран">⛶</button>
+    </div>
+
+    <div class="hud-top-center">
+      <div id="chain" class="hidden">
+        <div class="chain-row"><span id="chain-mult">x1</span><span id="chain-count">цепочка 0</span></div>
+        <div class="chain-bar"><div id="chain-fill"></div></div>
+      </div>
+      <div id="cp-dist">ЧЕКПОИНТ —</div>
+    </div>
+
+    <div class="hud-top-right">
+      <div id="money">$ 0</div>
+      <div id="score">0</div>
+      <div id="fps" class="hidden">— FPS</div>
+    </div>
+
+    <div id="popups"></div>
+    <div id="drift-live" class="hidden"><span class="dl-label">ДРИФТ</span><span id="drift-pts">0</span></div>
+    <div id="hint" class="hidden"></div>
+
+    <canvas id="minimap" width="240" height="240"></canvas>
+
+    <div id="speedo">
+      <div id="speed-num">0</div>
+      <div class="speed-unit">км/ч</div>
+      <div class="speed-bar"><div id="speed-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Управление строит input.js -->
+  <div id="controls-root" class="hidden">
+    <button id="vehicle-action" type="button" aria-label="Сесть в машину">СЕСТЬ<br><span>В МАШИНУ</span></button>
+  </div>
+
+  <!-- ========================== ЭКРАНЫ ========================== -->
+  <div id="loading" class="screen">
+    <div class="logo">OPEN<span>STREET</span></div>
+    <div class="load-bar"><div id="load-fill"></div></div>
+    <div id="load-text">Загрузка…</div>
+    <div id="load-tap" class="load-tap">
+      <div class="load-tap-main">НАЖМИТЕ, ЧТОБЫ НАЧАТЬ</div>
+      <div class="load-tap-sub">попробуем открыть игру на весь экран</div>
+    </div>
+  </div>
+  <button id="btn-fs" class="btn-small fs-btn hidden" aria-label="На весь экран"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>На весь экран</span></button>
+
+  <div id="menu" class="screen hidden">
+    <div class="menu-left">
+      <div class="logo small">OPEN<span>STREET</span></div>
+      <div class="menu-sub">свободный город</div>
+      <button class="btn-big primary" id="btn-play">ИГРАТЬ</button>
+      <button class="btn-big" id="btn-garage">ГАРАЖ</button>
+      <button class="btn-big" id="btn-character">ПЕРСОНАЖ</button>
+      <button class="btn-big" id="btn-settings">НАСТРОЙКИ</button>
+    </div>
+    <div class="menu-right">
+      <div class="stat-card">
+        <div class="stat-line"><span>Деньги</span><b id="menu-money">$ 0</b></div>
+        <div class="stat-line"><span>Рекорд очков</span><b id="menu-best">0</b></div>
+        <div class="stat-line"><span>Макс. скорость</span><b id="menu-speed">0 км/ч</b></div>
+        <div class="stat-line"><span>Пройдено</span><b id="menu-dist">0 км</b></div>
+        <div class="stat-line"><span>Машин в гараже</span><b id="menu-cars">1 / 4</b></div>
+      </div>
+      <div class="menu-help">
+        <b>Как играть.</b> Начни пешком: стик слева — движение, свайп справа — камера,
+        «БЕГ» — ускорение. Подойди к машине и нажми «СЕСТЬ» или «УГНАТЬ».
+        За рулём собирай голубые кольца, дрифтуй и зарабатывай деньги.
+      </div>
+    </div>
+  </div>
+
+  <div id="garage" class="screen hidden transparent">
+    <div class="garage-top">
+      <button class="icon-btn" id="garage-back" aria-label="Назад">←</button>
+      <div class="garage-money" id="garage-money">$ 0</div>
+    </div>
+    <div class="garage-panel">
+      <div class="garage-name"><button class="arrow" id="car-prev">‹</button><span id="car-name">—</span><button class="arrow" id="car-next">›</button></div>
+      <div class="garage-desc" id="car-desc"></div>
+      <div class="bars">
+        <div class="bar-row"><span>Скорость</span><div class="bar"><div id="bar-speed"></div></div><em id="val-speed"></em></div>
+        <div class="bar-row"><span>Разгон</span><div class="bar"><div id="bar-accel"></div></div><em id="val-accel"></em></div>
+        <div class="bar-row"><span>Управление</span><div class="bar"><div id="bar-handling"></div></div><em></em></div>
+        <div class="bar-row"><span>Дрифт</span><div class="bar"><div id="bar-drift"></div></div><em></em></div>
+      </div>
+      <button class="btn-big primary" id="car-action">ВЫБРАТЬ</button>
+    </div>
+  </div>
+
+  <div id="character" class="screen hidden transparent">
+    <div class="character-top"><button class="icon-btn" id="character-back" aria-label="Назад">←</button></div>
+    <div class="character-panel">
+      <div class="character-title">ВЫБОР ГЕРОЯ</div>
+      <div class="character-name"><button class="arrow" id="character-prev" aria-label="Предыдущий герой">‹</button><span id="character-name">—</span><button class="arrow" id="character-next" aria-label="Следующий герой">›</button></div>
+      <div class="character-desc" id="character-desc"></div>
+      <div class="character-status" id="character-status" aria-live="polite"></div>
+      <button class="btn-big primary" id="character-action">ВЫБРАТЬ</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen hidden">
+    <div class="panel settings-panel">
+      <div class="panel-head"><div class="panel-title">Настройки</div><button class="btn-small accent" id="settings-back">ГОТОВО ✓</button></div>
+      <div class="set-grid">
+        <div class="set-row"><span>Звук</span><div class="seg" data-set="sound"><button data-v="true">Вкл</button><button data-v="false">Выкл</button></div></div>
+        <div class="set-row"><span>Вибрация</span><div class="seg" data-set="haptics"><button data-v="true">Вкл</button><button data-v="false">Выкл</button></div></div>
+        <div class="set-row"><span>Графика</span><div class="seg" data-set="quality"><button data-v="auto">Авто</button><button data-v="high">Качество</button><button data-v="low">Скорость</button></div></div>
+        <div class="set-row"><span>Управление</span><div class="seg" data-set="steerMode"><button data-v="arrows">Стрелки</button><button data-v="stick">Стик</button></div></div>
+        <div class="set-row"><span>Руль</span><div class="seg" data-set="steerSens"><button data-v="low">Мягкий</button><button data-v="mid">Средний</button><button data-v="high">Острый</button></div></div>
+        <div class="set-row"><span>Газ/тормоз стиком</span><div class="seg" data-set="stickPedals"><button data-v="true">Да</button><button data-v="false">Нет</button></div></div>
+        <div class="set-row"><span>Показывать FPS</span><div class="seg" data-set="showFps"><button data-v="true">Да</button><button data-v="false">Нет</button></div></div>
+        <div class="set-row"><span>Прогресс</span><button class="btn-small danger" id="btn-reset-save">Сбросить</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="panel narrow">
+      <div class="panel-title">Пауза</div>
+      <button class="btn-big primary" id="pause-resume">ПРОДОЛЖИТЬ</button>
+      <button class="btn-big" id="pause-garage">ГАРАЖ</button>
+      <button class="btn-big" id="pause-settings">НАСТРОЙКИ</button>
+      <button class="btn-big" id="pause-menu">В МЕНЮ</button>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <div id="rotate">
+    <div class="rotate-icon">⟳</div>
+    <div>Поверните телефон горизонтально</div>
+    <button class="btn-small accent" id="rotate-fs">НА ВЕСЬ ЭКРАН</button>
+    <div class="rotate-help">Если поворот не сработал, поверните телефон вручную.</div>
+  </div>
+
+  <div id="fatal" class="screen hidden">
+    <div class="panel">
+      <div class="panel-title">Не удалось запустить 3D</div>
+      <div id="fatal-text" class="fatal-text"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

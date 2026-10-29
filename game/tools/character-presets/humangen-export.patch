@@ -1,0 +1,17 @@
+--- a/app.js
++++ b/app.js
+@@ -353 +353 @@
+-      const top = [...acc].sort((a, b) => b[1] - a[1]).slice(0, 4), tot = top.reduce((s, [, w]) => s + w, 0) || 1;
++      const top = [...acc].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).slice(0, 4), tot = top.reduce((s, [, w]) => s + w, 0) || 1;
+@@ -588,3 +588,8 @@
+-document.getElementById('dl-glb').onclick = () =>
+-  new GLTFExporter().parse(group, glb => download(new Blob([glb], { type: 'model/gltf-binary' }), 'human.glb'),
+-    err => alert(err), { binary: true, animations: rig && pose?.frames.length > 1 ? [poseClip()] : [] });
++document.getElementById('dl-glb').onclick = () => {
++  // Don't embed generator-only quad data in the game model.
++  const data = [];
++  group.traverse(o => { data.push([o, o.userData]); o.userData = {}; });
++  const restore = () => { for (const [o, userData] of data) o.userData = userData; };
++  new GLTFExporter().parse(group, glb => { restore(); download(new Blob([glb], { type: 'model/gltf-binary' }), 'human.glb'); },
++    err => { restore(); alert(err); }, { binary: true, animations: rig && pose?.frames.length > 1 ? [poseClip()] : [] });
++};
