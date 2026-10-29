@@ -4,6 +4,7 @@
 // ============================================================================
 import { STARTER_CAR } from './cars.js';
 import { DEFAULT_CHARACTER, characterById } from './characters.js';
+import { makeHomeState } from './home-interactions.js';
 
 const KEY = 'openstreet.save.v1';
 
@@ -17,6 +18,7 @@ export const DEFAULT_SAVE = {
   ownedCars: [STARTER_CAR],
   activeCar: STARTER_CAR,
   selectedCharacter: DEFAULT_CHARACTER,
+  homeStates: {},         // состояния предметов отдельно для каждого дома
   settings: { sound: true, haptics: true, quality: 'auto', steerSens: 'mid', steerMode: 'arrows', stickPedals: false, showFps: false },
   notifiedCars: [],       // о каких машинах уже сообщали «можно купить»
   runs: 0,
@@ -46,6 +48,16 @@ function mergeDefaults(data) {
   // массивы всегда копируем: иначе ownCar() мутировал бы DEFAULT_SAVE
   out.ownedCars = (Array.isArray(out.ownedCars) && out.ownedCars.length) ? out.ownedCars.slice() : [STARTER_CAR];
   out.notifiedCars = Array.isArray(out.notifiedCars) ? out.notifiedCars.slice() : [];
+  // Старые сохранения не содержат домов. Читаем только ограниченные числовые
+  // id и известные boolean-поля, не доверяя повреждённому localStorage.
+  const homes = {};
+  const rawHomes = data?.homeStates;
+  if (rawHomes && typeof rawHomes === 'object' && !Array.isArray(rawHomes)) {
+    for (const [id, value] of Object.entries(rawHomes)) {
+      if (/^(0|[1-9]\d{0,4})$/.test(id) && value && typeof value === 'object' && !Array.isArray(value)) homes[id] = makeHomeState(value);
+    }
+  }
+  out.homeStates = homes;
   if (!out.ownedCars.includes(out.activeCar)) out.activeCar = out.ownedCars[0];
   if (!characterById(out.selectedCharacter)) out.selectedCharacter = DEFAULT_CHARACTER;
   if (typeof out.money !== 'number' || !isFinite(out.money) || out.money < 0) out.money = 0;
@@ -100,6 +112,7 @@ export function resetSave() {
   _cache = Object.assign({}, DEFAULT_SAVE, { settings: Object.assign({}, DEFAULT_SAVE.settings, keep) });
   _cache.ownedCars = [STARTER_CAR];
   _cache.notifiedCars = [];
+  _cache.homeStates = {};
   markDirty();
   flushNow();
   return _cache;

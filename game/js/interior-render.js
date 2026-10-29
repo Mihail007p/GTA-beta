@@ -133,7 +133,8 @@ export function buildInteriorScene(layout, variation = 0) {
   const home = layout.kind === 'home';
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(home ? 0xc5b7a3 : 0xb6c6c4);
-  scene.add(new THREE.HemisphereLight(0xf7f3e8, 0xb6afa2, 2.3));
+  const ambient = new THREE.HemisphereLight(0xf7f3e8, 0xb6afa2, 2.3);
+  scene.add(ambient);
   const lamp = new THREE.DirectionalLight(0xffe6c6, 1.2);
   lamp.position.set(-3, 8, 4); scene.add(lamp);
 
@@ -175,7 +176,7 @@ export function buildInteriorScene(layout, variation = 0) {
   box(mat.dark, 0, 1.27, 5.79, 1.72, 2.54, 0.09);
   box(mat.door, 0, 1.20, 5.73, 1.48, 2.35, 0.07);
   box(mat.metal, -0.50, 1.12, 5.67, 0.12, 0.12, 0.07);
-  box(mat.white, 0, 3.35, 0, 1.5, 0.07, 0.55); // потолочный светильник
+  if (!home) box(mat.white, 0, 3.35, 0, 1.5, 0.07, 0.55); // светильник магазина
   const exitSign = new THREE.Mesh(new THREE.PlaneGeometry(1.65, 0.37),
     new THREE.MeshBasicMaterial({ map: signTexture('ВЫХОД', '#1b795e'), toneMapped: false }));
   exitSign.position.set(0, 2.79, 5.68); exitSign.rotation.y = Math.PI; scene.add(exitSign);
@@ -193,11 +194,12 @@ export function buildInteriorScene(layout, variation = 0) {
     box(mat.rug, -2.1, 0.015, -0.8, 3.5, 0.03, 3.0);
     for (const p of layout.props) {
       if (p.kind === 'sofa') {
-        box(mat.wood, p.x, 0.23, p.z, p.hw * 2, 0.38, p.hd * 2);
-        box(mat.accent, p.x, 0.53, p.z, p.hw * 2, 0.45, p.hd * 2);
-        box(mat.accent, p.x - 0.57, 0.95, p.z, 0.28, 1.0, p.hd * 2);
-        for (const dz of [-1.46, 1.46]) box(mat.accent, p.x, 0.75, p.z + dz, 1.5, 0.50, 0.35);
-        for (const dz of [-0.95, 0, 0.95]) box(mat.fabric, p.x + 0.10, 0.80, p.z + dz, 0.55, 0.18, 0.65);
+        // Сиденье около 0.55 м над полом — ноги сидящего достают до пола.
+        box(mat.wood, p.x, 0.15, p.z, p.hw * 2, 0.28, p.hd * 2);
+        box(mat.accent, p.x, 0.36, p.z, p.hw * 2, 0.25, p.hd * 2);
+        box(mat.accent, p.x - 0.57, 0.75, p.z, 0.28, 0.90, p.hd * 2);
+        for (const dz of [-1.46, 1.46]) box(mat.accent, p.x, 0.56, p.z + dz, 1.5, 0.42, 0.35);
+        for (const dz of [-0.95, 0, 0.95]) box(mat.fabric, p.x + 0.10, 0.52, p.z + dz, 0.85, 0.10, 0.75);
       } else if (p.kind === 'bed') {
         box(mat.wood, p.x, 0.25, p.z, p.hw * 2, 0.45, p.hd * 2);
         box(mat.fabric, p.x, 0.57, p.z, p.hw * 2 - 0.12, 0.22, p.hd * 2 - 0.12);
@@ -207,16 +209,26 @@ export function buildInteriorScene(layout, variation = 0) {
       } else if (p.kind === 'table') {
         box(mat.wood, p.x, 0.58, p.z, p.hw * 2, 0.12, p.hd * 2);
         for (const dx of [-0.65, 0.65]) for (const dz of [-0.4, 0.4]) box(mat.wood, p.x + dx, 0.29, p.z + dz, 0.11, 0.58, 0.11);
-        box(mat.white, p.x - 0.22, 0.67, p.z, 0.45, 0.06, 0.30);
+        // Книга добавляется отдельно: её обложка открывается.
       } else if (p.kind === 'kitchen') {
         box(mat.wood, p.x, 0.48, p.z, p.hw * 2, 0.92, p.hd * 2);
         box(mat.trim, p.x, 0.98, p.z, p.hw * 2 + 0.06, 0.10, p.hd * 2 + 0.06);
         box(mat.metal, p.x - 0.8, 1.04, p.z, 0.9, 0.04, 0.6);
+        box(mat.metal, p.x - 0.8, 1.24, p.z - 0.22, 0.07, 0.40, 0.07);
+        box(mat.metal, p.x - 0.8, 1.43, p.z - 0.08, 0.07, 0.07, 0.34);
         box(mat.dark, p.x + 0.9, 1.04, p.z, 0.75, 0.04, 0.6);
         box(mat.wood, p.x, 2.55, -5.54, p.hw * 2, 0.65, 0.45);
       } else if (p.kind === 'cabinet') {
-        box(mat.wood, p.x, 1.05, p.z, p.hw * 2, 2.1, p.hd * 2);
-        box(mat.dark, p.x - 0.5, 1.15, p.z, 0.05, 1.7, p.hd * 2 - 0.2);
+        // Шкаф не сплошной: за открывающимися дверцами видны полки.
+        box(mat.wood, p.x + p.hw - 0.05, 1.05, p.z, 0.10, 2.1, p.hd * 2);
+        for (const dz of [-p.hd + 0.05, p.hd - 0.05])
+          box(mat.wood, p.x, 1.05, p.z + dz, p.hw * 2, 2.1, 0.10);
+        for (const y of [0.08, 0.70, 1.35, 2.04])
+          box(mat.wood, p.x, y, p.z, p.hw * 2, 0.10, p.hd * 2);
+        for (const dz of [-0.7, 0, 0.7]) {
+          box(mat.fabric, p.x, 0.85, p.z + dz, 0.50, 0.22, 0.42);
+          box(mat.accent2, p.x, 1.49, p.z + dz, 0.48, 0.18, 0.38);
+        }
       } else if (p.kind === 'plant') {
         box(mat.accent2, p.x, 0.25, p.z, 0.58, 0.5, 0.58);
         box(mat.leaf, p.x, 0.85, p.z, p.hw * 2, 0.9, p.hd * 2);
@@ -270,7 +282,112 @@ export function buildInteriorScene(layout, variation = 0) {
     transforms.forEach((m, i) => mesh.setMatrixAt(i, m));
     mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); scene.add(mesh);
   }
+  if (home) buildHomeDetails(scene, layout, unit, mat, ambient, lamp);
   return scene;
+}
+
+// Отдельные небольшие объекты только для того, что действительно меняется.
+// Общая кубическая геометрия и существующие материалы снижают нагрузку.
+function buildHomeDetails(scene, layout, unit, mat, ambient, lamp) {
+  const prop = name => layout.props.find(p => p.kind === name);
+  const meshBox = (parent, material, x, y, z, w, h, d) => {
+    const mesh = new THREE.Mesh(unit, material);
+    mesh.position.set(x, y, z); mesh.scale.set(w, h, d); parent.add(mesh); return mesh;
+  };
+  const ceilingMat = new THREE.MeshBasicMaterial({ color: 0xffefbe });
+  meshBox(scene, ceilingMat, 0, 3.35, 0, 1.5, 0.07, 0.55);
+  meshBox(scene, mat.white, 1.65, 1.35, 5.68, 0.30, 0.32, 0.06);
+  const switchMat = new THREE.MeshBasicMaterial({ color: 0xe4a842 });
+  meshBox(scene, switchMat, 1.65, 1.35, 5.64, 0.11, 0.15, 0.03);
+
+  const tv = prop('television');
+  meshBox(scene, mat.dark, tv.x, 1.92, tv.z, 0.14, 1.08, 1.86);
+  const black = new THREE.MeshBasicMaterial({ color: 0x12191e });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.68, 0.88), black);
+  screen.rotation.y = -Math.PI / 2; screen.position.set(tv.x - 0.076, 1.94, tv.z); scene.add(screen);
+  // Изображение — локальная декоративная заставка, а не потоковое видео.
+  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 288;
+  const g = canvas.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 288);
+  grad.addColorStop(0, '#21447d'); grad.addColorStop(0.7, '#ef9160'); grad.addColorStop(1, '#393559');
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 288);
+  g.fillStyle = '#ffdf98'; g.beginPath(); g.arc(374, 90, 38, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#1f3750';
+  for (let x = 0; x < 512; x += 45) {
+    const h = 32 + ((x * 7) % 75); g.fillRect(x, 205 - h, 37, h);
+  }
+  g.fillStyle = '#202c3c'; g.fillRect(0, 202, 512, 86);
+  g.fillStyle = 'rgba(10,20,35,.7)'; g.fillRect(18, 18, 236, 42);
+  g.font = 'bold 26px Arial, sans-serif'; g.fillStyle = '#fff'; g.fillText('ГОРОД · TV', 31, 47);
+  const tvTexture = new THREE.CanvasTexture(canvas); tvTexture.colorSpace = THREE.SRGBColorSpace;
+  const tvPicture = new THREE.Mesh(new THREE.PlaneGeometry(1.68, 0.88),
+    new THREE.MeshBasicMaterial({ map: tvTexture, toneMapped: false }));
+  tvPicture.rotation.y = -Math.PI / 2; tvPicture.position.set(tv.x - 0.079, 1.94, tv.z); scene.add(tvPicture);
+
+  const kitchen = prop('kitchen');
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.038, 0.36, 8),
+    new THREE.MeshBasicMaterial({ color: 0x7ddcf4, transparent: true, opacity: 0.78, depthWrite: false }));
+  water.position.set(kitchen.x - 0.8, 1.23, kitchen.z + 0.05); scene.add(water);
+  const burners = new THREE.Group();
+  const hotMat = new THREE.MeshBasicMaterial({ color: 0xff6a36, toneMapped: false });
+  for (const [dx, dz] of [[-0.18, -0.15], [0.18, -0.15], [-0.18, 0.15], [0.18, 0.15]]) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.065, 0.105, 16), hotMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(kitchen.x + 0.9 + dx, 1.065, kitchen.z + dz);
+    burners.add(ring);
+  }
+  scene.add(burners);
+
+  const cabinet = prop('cabinet'), doors = [];
+  const front = cabinet.x - cabinet.hw - 0.025, leafDepth = cabinet.hd - 0.09;
+  for (const sign of [-1, 1]) {
+    const hinge = new THREE.Group();
+    hinge.position.set(front, 0, cabinet.z + sign * (cabinet.hd - 0.06));
+    meshBox(hinge, mat.door, 0, 1.07, -sign * leafDepth / 2, 0.08, 1.92, leafDepth);
+    meshBox(hinge, mat.metal, -0.06, 1.12, -sign * (leafDepth - 0.10), 0.07, 0.21, 0.06);
+    scene.add(hinge); doors.push(hinge);
+  }
+
+  const table = prop('table'), bookX = table.x - 0.22, bookZ = table.z;
+  meshBox(scene, mat.door, bookX, 0.655, bookZ, 0.46, 0.04, 0.32);
+  meshBox(scene, mat.white, bookX, 0.682, bookZ, 0.42, 0.04, 0.28);
+  const book = new THREE.Group(); book.position.set(bookX, 0.705, bookZ - 0.16);
+  meshBox(book, mat.door, 0, 0, 0.16, 0.46, 0.035, 0.32); scene.add(book);
+
+  const ringGeo = new THREE.RingGeometry(0.16, 0.21, 20); ringGeo.rotateX(-Math.PI / 2);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x91ecf4, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false });
+  const markers = new THREE.InstancedMesh(ringGeo, ringMat, layout.interactions.length);
+  const matrix = new THREE.Matrix4();
+  layout.interactions.forEach((p, i) => { matrix.makeTranslation(p.x, 0.045, p.z); markers.setMatrixAt(i, matrix); });
+  markers.instanceMatrix.needsUpdate = true; markers.computeBoundingSphere(); scene.add(markers);
+  const activeRing = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.30, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffdc70, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }));
+  activeRing.rotation.x = -Math.PI / 2; activeRing.visible = false; scene.add(activeRing);
+  scene.userData.home = { ambient, lamp, ceilingMat, switchMat, tvPicture, water, burners, doors, book, activeRing };
+}
+
+export function updateHomeScene(scene, state, dt) {
+  const home = scene?.userData.home;
+  if (!home || !state) return;
+  home.ambient.intensity = state.light ? 2.3 : 0.50;
+  home.lamp.intensity = state.light ? 1.2 : 0.18;
+  home.ceilingMat.color.setHex(state.light ? 0xffefbe : 0x5c5b54);
+  home.switchMat.color.setHex(state.light ? 0xe4a842 : 0x6e7672);
+  home.tvPicture.visible = state.tv;
+  home.water.visible = state.water;
+  home.burners.visible = state.stove;
+  // Мягкое движение дверец и обложки не продолжается во время паузы.
+  const a = 1 - Math.exp(-Math.max(0, dt) * 8);
+  home.doors[0].rotation.y += ((state.cabinet ? -1.18 : 0) - home.doors[0].rotation.y) * a;
+  home.doors[1].rotation.y += ((state.cabinet ? 1.18 : 0) - home.doors[1].rotation.y) * a;
+  home.book.rotation.x += ((state.book ? -2.35 : 0) - home.book.rotation.x) * a;
+}
+
+export function highlightHomeInteraction(scene, item) {
+  const ring = scene?.userData.home?.activeRing;
+  if (!ring) return;
+  ring.visible = !!item;
+  if (item) ring.position.set(item.x, 0.048, item.z);
 }
 
 /** Освобождаем только принадлежащие комнате ресурсы, не затрагивая героя. */

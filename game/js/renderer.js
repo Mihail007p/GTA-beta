@@ -23,7 +23,7 @@ import { wrapAngle, dampAngle, damp } from './car-physics.js';
 import { turnLook } from './look-controls.js';
 import { createHero, cloneHeroForDriver } from './hero-model.js';
 import { characterById } from './characters.js';
-import { buildEntranceMeshes, buildInteriorScene, disposeInteriorScene } from './interior-render.js';
+import { buildEntranceMeshes, buildInteriorScene, disposeInteriorScene, updateHomeScene, highlightHomeInteraction } from './interior-render.js';
 
 const BUILDING_TINTS = [0xb8b2a8, 0xa39e98, 0xc4b8a4, 0x9aa3ad, 0xb5a08f, 0x8f98a3, 0xcfc6b6, 0xa8988a];
 const TRAFFIC_COLORS = [0xd0d4da, 0x2e353d, 0xa8382f, 0x2f5d8a, 0xe2dccc, 0x50565e];
@@ -772,6 +772,11 @@ export class Renderer {
     this.interiorHash = null;
   }
 
+  updateHome(state, dt, activeItem) {
+    updateHomeScene(this.interiorScene, state, dt);
+    highlightHomeInteraction(this.interiorScene, activeItem);
+  }
+
   // --------------------------------------------------------- МАШИНА ИГРОКА --
   setPlayerCar(def) {
     if (this.playerMesh) {
@@ -832,10 +837,21 @@ export class Renderer {
   updateHero(hero, dt, preview = false) {
     if (!this.heroActor || !hero) return;
     const root = this.heroActor.root;
-    root.position.set(hero.x, hero.y || 0, hero.z);
+    const pose = preview ? null : hero.pose;
+    const t = pose ? pose.amount * pose.amount * (3 - 2 * pose.amount) : 0;
+    const visual = pose?.visual;
+    root.position.set(
+      hero.x + ((visual?.x ?? hero.x) - hero.x) * t,
+      (hero.y || 0) + ((visual?.y ?? (hero.y || 0)) - (hero.y || 0)) * t,
+      hero.z + ((visual?.z ?? hero.z) - hero.z) * t);
     // Модель MakeHuman смотрит вдоль +Z, логика игры — вдоль +X.
-    root.rotation.y = Math.PI / 2 - hero.heading;
-    this.heroActor.update(dt, preview ? 0 : hero.speed, !preview && hero.running);
+    const yaw = Math.PI / 2 - hero.heading;
+    const targetYaw = Math.PI / 2 - (visual?.heading ?? hero.heading);
+    root.rotation.order = 'YXZ';
+    root.rotation.y = yaw + wrapAngle(targetYaw - yaw) * t;
+    root.rotation.x = pose?.kind === 'lie' ? -Math.PI / 2 * t : 0;
+    root.rotation.z = 0;
+    this.heroActor.update(dt, preview ? 0 : hero.speed, !preview && hero.running, pose);
   }
 
   spawnDriver() {
@@ -873,19 +889,26 @@ export class Renderer {
   }
 
   updateFootCamera(hero, dt) {
-    const yaw = hero.camYaw, pitch = hero.camPitch, distance = 4.2;
+    const yaw = hero.camYaw, pitch = hero.camPitch;
     const c = Math.cos(yaw), s = Math.sin(yaw);
+    const pose = hero.pose, t = pose ? pose.amount * pose.amount * (3 - 2 * pose.amount) : 0;
+    // В домашней позе приближаем камеру, чтобы персонаж не потерялся на экране телефона.
+    const distance = 4.2 - 1.15 * t;
+    const focus = pose?.focus;
+    const x = hero.x + ((focus?.x ?? hero.x) - hero.x) * t;
+    const z = hero.z + ((focus?.z ?? hero.z) - hero.z) * t;
+    const y = (hero.y || 0) + 1.05 + ((focus?.y ?? ((hero.y || 0) + 1.05)) - ((hero.y || 0) + 1.05)) * t;
     const flat = distance * Math.cos(pitch);
-    const allowed = this._cameraClearance(hero.x, hero.z, -c, -s, flat);
+    const allowed = this._cameraClearance(x, z, -c, -s, flat);
     if (!this._camInit) { this._camClip = allowed; this._camInit = true; }
     else if (allowed < this._camClip) this._camClip = allowed;
     else this._camClip = damp(this._camClip, allowed, 2.5, dt);
     const d = Math.min(flat, this._camClip);
-    const height = (hero.y || 0) + 1.08 + distance * Math.sin(pitch);
-    this.camera.position.set(hero.x - c * d, this.inInterior ? Math.min(height, 3.2) : height, hero.z - s * d);
+    const height = y + 0.03 + distance * Math.sin(pitch);
+    this.camera.position.set(x - c * d, this.inInterior ? Math.min(height, 3.2) : height, z - s * d);
     // В тесном углу лучше временно скрыть модель, чем показать камеру внутри головы.
     if (this.heroActor) this.heroActor.root.visible = this.heroVisible && (!this.inInterior || d >= 0.75);
-    this.camera.lookAt(hero.x, (hero.y || 0) + 1.05, hero.z);
+    this.camera.lookAt(x, y, z);
     this.camYaw = yaw;
     if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
     this.camera.fov = damp(this.camera.fov, 57, 4, dt);
@@ -1129,7 +1152,10 @@ export class Renderer {
     const sx = dx * maxD, sz = dz * maxD;
     for (let i = 0; i < out.length; i++) {
       const b = out[i];
-      if (b.kind !== 'building' && b.kind !== 'wall') continue;
+      // В помещении высокая мебель тоже может закрыть весь экран. Низкие
+      // стол и диван не ограничивают камеру над ними и не мешают позам.
+      const tallInterior = this.inInterior && (b.kind === 'cabinet' || b.kind === 'shelf' || b.kind === 'chiller');
+      if (b.kind !== 'building' && b.kind !== 'wall' && !tallInterior) continue;
       const minX = b.x - b.hw - pad, maxX = b.x + b.hw + pad;
       const minZ = b.z - b.hd - pad, maxZ = b.z + b.hd + pad;
       if (x > minX && x < maxX && z > minZ && z < maxZ) continue;     // машина вплотную к стене — не дёргаем

@@ -91,6 +91,28 @@ try {
   assert.equal(await back(), true); assert.equal(await page.locator('#settings').isVisible(), true);
   assert.equal(await back(), true); assert.equal(await page.locator('#pause').isVisible(), true);
   assert.equal(await back(), true); await wait(() => __game.state === 'play');
+
+  // Проверяем именно файлы из APK: вход, позу, телевизор с дивана и native back.
+  await page.evaluate(() => {
+    const door = __game.entrances.find(d => d.kind === 'home');
+    Object.assign(__game.hero, { x: door.x, z: door.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в дом');
+  await tap('#vehicle-action'); await wait(() => __game.interior?.layout.kind === 'home' && !__game.roomTransition);
+  await page.evaluate(() => {
+    const sofa = __game.interior.layout.interactions.find(i => i.id === 'sofa');
+    Object.assign(__game.hero, { x: sofa.x, z: sofa.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Сесть на диван');
+  await tap('#vehicle-action'); await wait(() => __game.hero.pose?.kind === 'sit' && __game.hero.pose.amount === 1);
+  await tap('#home-tv-action'); await wait(() => __game.interior.homeState.tv && __game.R.interiorScene.userData.home.tvPicture.visible);
+  assert.equal(await back(), true); await wait(() => __game.state === 'pause');
+  const paused = await page.evaluate(() => __game.hero.pose.amount);
+  await page.waitForTimeout(300); assert.equal(await page.evaluate(() => __game.hero.pose.amount), paused);
+  assert.equal(await back(), true); await wait(() => __game.state === 'play');
+  await tap('#vehicle-action'); await wait(() => !__game.hero.pose);
+  console.log('  ✓ packaged home interactions and pause/back work with the native-origin assets');
+
   await page.evaluate(() => { __game.save.money = 4321; window.__openStreetAndroidPause(); });
   await wait(() => __game.state === 'pause');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('openstreet.save.v1')).money), 4321);
@@ -100,6 +122,7 @@ try {
   assert.equal(await page.evaluate(() => __game.save.money), 4321, 'save survives reload on the same native origin');
   assert.equal(await page.evaluate(() => window.__swCalls), 0);
   assert.ok(loaded.has('game/assets/characters/hero-1.glb'));
+  assert.ok(loaded.has('game/js/home-interactions.js'));
   assert.ok(loaded.has('game/assets/cars/cayenne.glb'));
   assert.ok(loaded.has('game/assets/traffic.glb'));
   assert.deepEqual(missing, [], 'all requested assets exist inside the APK');

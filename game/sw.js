@@ -2,7 +2,7 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
@@ -13,7 +13,7 @@ const FILES = [
   './js/collision.js', './js/traffic.js', './js/gameplay.js', './js/save.js', './js/textures.js',
   './js/car-model.js', './js/renderer.js', './js/audio.js', './js/input.js', './js/ui.js', './js/traffic-types.js',
   './js/characters.js', './js/pedestrian.js', './js/vehicles.js', './js/foot-input.js', './js/hero-model.js',
-  './js/look-controls.js', './js/interiors.js', './js/interior-render.js',
+  './js/look-controls.js', './js/interiors.js', './js/interior-render.js', './js/home-interactions.js',
   './vendor/GLTFLoader.js', './vendor/BufferGeometryUtils.js', './vendor/meshopt_decoder.module.js',
   // модели (~3.4 МБ): машины гаража и трафик — чтобы гараж работал и без интернета
   './assets/cars/cayenne.glb', './assets/cars/gt3.glb', './assets/cars/f458.glb', './assets/cars/cgt.glb',

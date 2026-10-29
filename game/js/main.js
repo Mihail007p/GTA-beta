@@ -23,6 +23,7 @@ import { CHARACTERS } from './characters.js';
 import { makePedestrian, stepPedestrian, findExitSpot, carIsStopped, stopParkedCar, circleVsCar, carEntryDistance, HERO_RADIUS } from './pedestrian.js';
 import { VehicleWorld } from './vehicles.js';
 import { makeEntrances, nearestEntrance, makeInteriorLayout, makeInteriorHash, nearInteriorExit, findReturnSpot } from './interiors.js';
+import { makeHomeState, nearestHomeInteraction, homeActionMode, toggleHomeItem, startHomePose, requestStand, stepHomePose } from './home-interactions.js';
 import { UI } from './ui.js';
 
 const ui = new UI();
@@ -180,7 +181,7 @@ function respawn() {
   if (interior) {
     const p = interior.layout.spawn;
     hero = makePedestrian(p.x, p.z, p.heading);
-    R._camInit = false; ui.hint('');
+    R._camInit = false; ui.hint(''); ui.setHomeTvAction(false, false);
     ui.toast('Вернулись к выходу из помещения');
     return;
   }
@@ -368,7 +369,12 @@ function stepDriver(dt) {
 
 // Один контекстный выбор для подписи кнопки и для самого нажатия.
 function footAction() {
-  if (interior) return nearInteriorExit(hero, interior.layout) ? { mode: 'room-exit' } : { mode: 'none' };
+  if (interior) {
+    if (hero.pose) return { mode: hero.pose.leaving ? 'home-rising' : 'home-stand' };
+    if (nearInteriorExit(hero, interior.layout)) return { mode: 'room-exit' };
+    const item = nearestHomeInteraction(hero, interior.layout.interactions);
+    return { mode: homeActionMode(item, interior.homeState), item };
+  }
   const door = nearestEntrance(hero, entrances);
   const vehicle = vehicles.nearest(hero);
   if (door && (!vehicle || Math.hypot(hero.x - door.x, hero.z - door.z) <= carEntryDistance(hero, vehicle.car, vehicle.def))) {
@@ -414,13 +420,16 @@ function enterInterior(door) {
   const outside = { x: hero.x, z: hero.z, heading: hero.heading, camYaw: hero.camYaw, camPitch: hero.camPitch };
   startRoomTransition(() => {
     const layout = makeInteriorLayout(door.kind), roomHash = makeInteriorHash(layout);
+    const homeState = door.kind === 'home' ? makeHomeState(save.homeStates[door.id]) : null;
+    if (homeState) save.homeStates[door.id] = homeState;
     R.openInterior(layout, roomHash, door.id);
-    interior = { door, outside, layout, hash: roomHash };
+    interior = { door, outside, layout, hash: roomHash, homeState };
+    if (homeState) R.updateHome(homeState, 1, null);
     hero = makePedestrian(layout.spawn.x, layout.spawn.z, layout.spawn.heading);
     R.updateHero(hero, 0); R.showHero(true);
     driverEvent = null; R.clearDriver();
     ui.setInside(door.kind); ui.hint('');
-    ui.toast('Чтобы выйти, подойдите к двери');
+    ui.toast(homeState ? 'Голубые метки — действия с предметами' : 'Чтобы выйти, подойдите к двери');
   });
 }
 function exitInterior() {
@@ -446,7 +455,27 @@ function toggleVehicle() {
   if (onFoot) {
     const action = footAction();
     if (action.mode === 'room-exit') { exitInterior(); return; }
-    if (interior) { ui.toast('Подойдите к выходу'); return; }
+    if (interior) {
+      if (action.mode === 'home-stand') { requestStand(hero); R._camInit = false; return; }
+      if (action.mode === 'home-rising') return;
+      if (action.item?.kind === 'sit' || action.item?.kind === 'lie') {
+        if (!R.heroActor || R.heroId !== save.selectedCharacter) { ui.toast('Сначала дождитесь загрузки героя'); return; }
+        if (startHomePose(hero, action.item, interior.layout)) R._camInit = false;
+        else ui.toast('Подойдите к мебели с другой стороны');
+      } else if (action.item && toggleHomeItem(interior.homeState, action.item)) {
+        // Поворачиваемся к предмету; если он был за камерой, один раз
+        // показываем результат, после чего камера снова свободна для свайпа.
+        const target = action.item.target;
+        if (target) {
+          const yaw = Math.atan2(target.z - hero.z, target.x - hero.x);
+          hero.heading = yaw;
+          const diff = Math.atan2(Math.sin(yaw - hero.camYaw), Math.cos(yaw - hero.camYaw));
+          if (Math.abs(diff) > 1.0) { hero.camYaw = yaw; R._camInit = false; }
+        }
+        markDirty();
+      } else ui.toast('Подойдите к голубой метке или к выходу');
+      return;
+    }
     if (action.door) { enterInterior(action.door); return; }
     const result = vehicles.enter(action.vehicle);
     if (!result.ok) {
@@ -486,8 +515,15 @@ function toggleVehicle() {
   fx.prevSkid = [null, null]; fx.stuckT = 0; acc = 0;
   ui.toast('Стик — движение · свайп справа — камера');
 }
+function toggleSeatedTv() {
+  if (state !== 'play' || roomTransition || interior?.layout.kind !== 'home' || hero.pose?.kind !== 'sit' || hero.pose.leaving) return;
+  const tv = interior.layout.interactions.find(item => item.id === 'tv');
+  if (toggleHomeItem(interior.homeState, tv)) markDirty();
+}
 window.addEventListener('keydown', e => {
-  if (e.code === 'KeyE' && !e.repeat && state === 'play') { e.preventDefault(); toggleVehicle(); }
+  if (e.repeat || state !== 'play') return;
+  if (e.code === 'KeyE') { e.preventDefault(); toggleVehicle(); }
+  if (e.code === 'KeyT') { e.preventDefault(); toggleSeatedTv(); }
 });
 
 // ----------------------------------------------------------- ПОЛНЫЙ ЭКРАН --
@@ -591,6 +627,7 @@ function bindUi() {
       ui.toast('Герой выбран');
     },
     vehicle: () => toggleVehicle(),
+    homeTv: () => toggleSeatedTv(),
     garageBack: () => leaveGarage(),
     resume: () => { enterFullscreen(); goPlay(); },
     pause: () => goPause(),
@@ -682,8 +719,10 @@ function frame(dt, now) {
     fx.wasReset = inp.reset;
     hero.camYaw = turnLook(hero.camYaw, inp.lookX);
     hero.camPitch = clamp(hero.camPitch + inp.lookY * 0.004, -0.12, 0.72);
-    if (interior) stepPedestrian(hero, inp, dt, null, interior.hash, null, null, null);
-    else stepPedestrian(hero, inp, dt, city, hash, car, def, traffic);
+    if (interior) {
+      if (!stepHomePose(hero, inp, dt)) stepPedestrian(hero, inp, dt, null, interior.hash, null, null, null);
+      ui.hint('');
+    } else stepPedestrian(hero, inp, dt, city, hash, car, def, traffic);
   }
 
   // Пока игрок в помещении или в переходе, наружный мир не меняется:
@@ -723,6 +762,8 @@ function frame(dt, now) {
   } else if (onFoot && playing) R.updateHero(hero, dt);
   if (playing && onFoot) R.updateFootCamera(hero, dt);
   else R.updateCamera(car, dt, shake);
+  const roomAction = playing && interior && onFoot && !roomTransition ? footAction() : null;
+  if (playing && interior?.homeState) R.updateHome(interior.homeState, dt, roomAction?.item || null);
   if (!R.inInterior) {
     R.updateTraffic(traffic.cars, !playing);
     R.updateCheckpoints(g.checkpoints, time);
@@ -732,7 +773,8 @@ function frame(dt, now) {
   R.render();
 
   if (playing) {
-    if (onFoot && !pendingEntry) ui.setVehicleAction(roomTransition ? 'none' : footAction().mode);
+    if (onFoot && !pendingEntry) ui.setVehicleAction(roomTransition ? 'none' : (roomAction || footAction()).mode);
+    ui.setHomeTvAction(!!(interior?.homeState && hero.pose?.kind === 'sit' && !hero.pose.leaving && !roomTransition), !!interior?.homeState?.tv);
     const st = save.settings;
     const player = onFoot ? hero : car;
     ui.updateHud({
