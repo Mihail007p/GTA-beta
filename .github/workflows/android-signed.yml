@@ -142,6 +142,15 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npx playwright install chromium
           APK_PATH="$RUNNER_TEMP/openstreet-release/OpenStreet-v$VERSION_NAME.apk" npm run android-assets
+      - name: Test connected gameplay in mobile Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          node game/tools/server.mjs 8080 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd game/tests/e2e
+          npm run life
       - name: Upload verified APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

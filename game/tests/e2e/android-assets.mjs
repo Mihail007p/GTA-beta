@@ -113,6 +113,59 @@ try {
   await tap('#vehicle-action'); await wait(() => !__game.hero.pose);
   console.log('  ✓ packaged home interactions and pause/back work with the native-origin assets');
 
+  // Готовка, инвентарь и back проверяются на файлах, извлечённых из APK.
+  await page.evaluate(() => {
+    const stove = __game.interior.layout.interactions.find(i => i.id === 'stove');
+    Object.assign(__game.hero, { x: stove.x, z: stove.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Включить плиту');
+  await tap('#vehicle-action'); await wait(() => __game.interior.homeState.stove);
+  await wait(() => !document.querySelector('#life-context-action').classList.contains('hidden'));
+  await tap('#life-context-action'); await wait(() => __game.state === 'life');
+  await tap('[data-action="cook"][data-id="breakfast"]');
+  assert.equal(await page.evaluate(() => __game.save.life.inventory.meal), 1);
+  assert.equal(await back(), true); await wait(() => __game.state === 'play');
+  await page.evaluate(() => { __game.save.life.health = 70; __game.save.life.satiety = 40; });
+  await tap('#btn-bag'); await tap('[data-action="use"][data-id="meal"]');
+  assert.equal(await page.evaluate(() => __game.save.life.health), 85);
+  assert.equal(await back(), true); await wait(() => __game.state === 'play');
+  console.log('  ✓ packaged cooking, inventory and Android back work');
+
+  await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу');
+  await tap('#vehicle-action'); await wait(() => !__game.interior && !__game.roomTransition);
+  await page.evaluate(() => {
+    __game.save.money = 1000;
+    const d = __game.entrances.find(x => x.kind === 'shop');
+    Object.assign(__game.hero, { x: d.x, z: d.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в магазин');
+  await tap('#vehicle-action'); await wait(() => __game.interior?.layout.kind === 'shop' && !__game.roomTransition && __game.R.vendorActor);
+  await page.evaluate(() => {
+    const i = __game.interior.layout.interactions[0]; Object.assign(__game.hero, { x: i.x, z: i.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Поговорить с продавцом');
+  await tap('#vehicle-action'); await tap('[data-action="buy-outfit"][data-id="smart"]');
+  assert.equal(await page.evaluate(() => __game.save.money), 750);
+  assert.equal(await back(), true); await wait(() => __game.state === 'play');
+  await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу');
+  await tap('#vehicle-action'); await wait(() => !__game.interior && !__game.roomTransition);
+  await page.evaluate(() => {
+    const d = __game.entrances.find(x => x.kind === 'home'); Object.assign(__game.hero, { x: d.x, z: d.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в дом');
+  await tap('#vehicle-action'); await wait(() => __game.interior?.layout.kind === 'home' && !__game.roomTransition);
+  await page.evaluate(() => {
+    const i = __game.interior.layout.interactions.find(x => x.id === 'cabinet'); Object.assign(__game.hero, { x: i.x, z: i.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Открыть шкаф');
+  await tap('#vehicle-action'); await wait(() => __game.interior.homeState.cabinet);
+  await tap('#life-context-action'); await tap('[data-action="wear"][data-id="smart"]');
+  await wait(() => __game.save.life.outfit === 'smart' && __game.R.heroOutfit === 'smart');
+  assert.equal(await back(), true); await wait(() => __game.state === 'play');
+  console.log('  ✓ packaged seller, purchased outfit and animated character load without remote requests');
+
   await page.evaluate(() => { __game.save.money = 4321; window.__openStreetAndroidPause(); });
   await wait(() => __game.state === 'pause');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('openstreet.save.v1')).money), 4321);
@@ -123,6 +176,9 @@ try {
   assert.equal(await page.evaluate(() => window.__swCalls), 0);
   assert.ok(loaded.has('game/assets/characters/hero-1.glb'));
   assert.ok(loaded.has('game/js/home-interactions.js'));
+  assert.ok(loaded.has('game/js/life.js'));
+  assert.ok(loaded.has('game/assets/characters/hero-1-smart.glb'));
+  assert.ok(loaded.has('game/assets/characters/citizen-1.glb'));
   assert.ok(loaded.has('game/assets/cars/cayenne.glb'));
   assert.ok(loaded.has('game/assets/traffic.glb'));
   assert.deepEqual(missing, [], 'all requested assets exist inside the APK');

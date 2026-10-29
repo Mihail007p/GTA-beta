@@ -26,6 +26,7 @@
     <div class="hud-top-left">
       <button class="icon-btn" id="btn-pause" aria-label="Пауза">❚❚</button>
       <button class="icon-btn" id="btn-reset" aria-label="Вернуть на дорогу">⟲</button>
+      <button class="icon-btn bag-btn" id="btn-bag" aria-label="Рюкзак" title="Рюкзак"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 7V5a4 4 0 0 1 8 0v2M5 10a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2zM8 15h8v6H8zM10 10h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
       <button class="icon-btn hidden" id="hud-fs" aria-label="На весь экран" title="На весь экран">⛶</button>
     </div>
 
@@ -35,6 +36,7 @@
         <div class="chain-bar"><div id="chain-fill"></div></div>
       </div>
       <div id="cp-dist">ЧЕКПОИНТ —</div>
+      <div class="vitals" aria-label="Состояние героя"><span id="health-value">♥ 100</span><span id="satiety-value">◒ 100</span><span id="clock-value">☀ --:--</span></div>
     </div>
 
     <div class="hud-top-right">
@@ -59,6 +61,7 @@
   <!-- Управление строит input.js -->
   <div id="controls-root" class="hidden">
     <button id="vehicle-action" type="button" aria-label="Сесть в машину">СЕСТЬ<br><span>В МАШИНУ</span></button>
+    <button id="life-context-action" class="hidden" type="button" aria-label="Готовить">ГОТОВИТЬ<br><span>У ПЛИТЫ</span></button>
     <button id="home-tv-action" class="hidden" type="button" aria-label="Включить телевизор">ВКЛЮЧИТЬ<br><span>ТЕЛЕВИЗОР</span></button>
   </div>
 
@@ -95,6 +98,7 @@
         <b>Как играть.</b> Начни пешком: стик слева — движение, свайп справа — камера,
         «БЕГ» — ускорение. Подойди к машине и нажми «СЕСТЬ» или «УГНАТЬ».
         За рулём собирай голубые кольца, дрифтуй и зарабатывай деньги.
+        В магазине купи продукты или возьми доставку; дома готовь у плиты и меняй одежду у шкафа.
       </div>
     </div>
   </div>
@@ -138,6 +142,7 @@
         <div class="set-row"><span>Управление</span><div class="seg" data-set="steerMode"><button data-v="arrows">Стрелки</button><button data-v="stick">Стик</button></div></div>
         <div class="set-row"><span>Руль</span><div class="seg" data-set="steerSens"><button data-v="low">Мягкий</button><button data-v="mid">Средний</button><button data-v="high">Острый</button></div></div>
         <div class="set-row"><span>Газ/тормоз стиком</span><div class="seg" data-set="stickPedals"><button data-v="true">Да</button><button data-v="false">Нет</button></div></div>
+        <div class="set-row"><span>Урон от голода</span><div class="seg" data-set="starvationDamage"><button data-v="true">Вкл</button><button data-v="false">Выкл</button></div></div>
         <div class="set-row"><span>Показывать FPS</span><div class="seg" data-set="showFps"><button data-v="true">Да</button><button data-v="false">Нет</button></div></div>
         <div class="set-row"><span>Прогресс</span><button class="btn-small danger" id="btn-reset-save">Сбросить</button></div>
         <div class="set-row"><span>Авторы и лицензии</span><button class="btn-small" id="btn-credits">Посмотреть</button></div>
@@ -168,6 +173,14 @@
     </div>
   </div>
 
+  <div id="life" class="screen hidden">
+    <div class="panel life-panel">
+      <div class="panel-head"><div class="panel-title" id="life-title">Рюкзак</div><button class="btn-small accent" id="life-back">НАЗАД В ИГРУ</button></div>
+      <div class="life-summary" id="life-summary"></div>
+      <div class="life-list" id="life-list"></div>
+      <div class="life-note" id="life-note" aria-live="polite"></div>
+    </div>
+  </div>
   <div id="toast" class="hidden"></div>
 
   <div id="rotate">

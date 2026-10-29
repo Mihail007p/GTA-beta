@@ -2,7 +2,9 @@
 
 ## Персонажи
 
-`hero-1.glb` и `hero-2.glb` — настроенные специально для этой игры варианты,
+`hero-1.glb`, `hero-2.glb`, варианты костюмов `hero-1-smart.glb` /
+`hero-2-smart.glb` и два персонажа `citizen-1.glb` / `citizen-2.glb` —
+настроенные специально для этой игры варианты,
 **сгенерированные на основе готовых данных MakeHuman**, а не полностью
 смоделированные с нуля. Для создания использовался
 [HumanGenWeb](https://github.com/NastyFFM/HumanGenWeb/tree/a8ee33f96791ed15534246ac88cc8b20f9da8f6a)
@@ -16,6 +18,11 @@
   `male_casualsuit03` и `shoes01`.
 - `hero-2`: кожа `young_caucasian_female`, волосы `ponytail01`, одежда
   `female_casualsuit02` и `shoes03`.
+- `hero-1-smart` и `hero-2-smart`: те же параметры героев с `male_elegantsuit01` /
+  `female_elegantsuit01` и подходящей обувью.
+- `citizen-1`: `middleage_african_male`, `short03`, `male_worksuit01`;
+  используется для прохожих и продавца. `citizen-2`: `middleage_asian_female`,
+  `bob02`, `female_sportsuit01`; используется для прохожих.
 
 [Условия MakeHuman](https://github.com/makehumancommunity/makehuman/blob/master/makehuman/license.txt)
 отдельно определяют исходный код программы (AGPL) и её встроенные графические
@@ -28,7 +35,7 @@
 
 Каждая модель содержит риг на 53 кости. GLB оптимизированы meshopt и WebP;
 оригинальные исходники генератора и текстуры в игру не включены. Значения
-`WEIGHTS_0` в обеих оптимизированных моделях проверены на неотрицательность и
+`WEIGHTS_0` во всех шести оптимизированных моделях проверены на неотрицательность и
 нормировку. Проверка glTF не сообщила ошибок, но выдала предупреждения о
 расчётных тангентах и вложенных skinned-mesh; встроенный валидатор не проверяет
 расширение meshopt. Поэтому модели дополнительно проверены игровым загрузчиком.

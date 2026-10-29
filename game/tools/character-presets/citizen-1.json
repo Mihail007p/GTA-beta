@@ -1,0 +1,32 @@
+{
+  "macro": {
+    "gender": 1,
+    "age": 0.56,
+    "muscle": 0.62,
+    "weight": 0.52,
+    "height": 0.53,
+    "proportions": 0.5,
+    "african": 0.7,
+    "asian": 0.1,
+    "caucasian": 0.2
+  },
+  "details": {},
+  "expression": {},
+  "assets": {
+    "skin": "middleage_african_male",
+    "eyes": "brown",
+    "eyebrows": "eyebrow001",
+    "eyelashes": "eyelashes01",
+    "hair": "short03",
+    "hairTint": "#1d1715",
+    "teeth": "",
+    "tongue": "",
+    "clothes": [
+      "male_worksuit01",
+      "shoes02"
+    ],
+    "tint": "#ffffff",
+    "rig": "game_engine",
+    "pose": ""
+  }
+}

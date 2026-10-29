@@ -2,7 +2,7 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v14';
+const CACHE_VERSION = 'v15';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
@@ -14,11 +14,14 @@ const FILES = [
   './js/car-model.js', './js/renderer.js', './js/audio.js', './js/input.js', './js/ui.js', './js/traffic-types.js',
   './js/characters.js', './js/pedestrian.js', './js/vehicles.js', './js/foot-input.js', './js/hero-model.js',
   './js/look-controls.js', './js/interiors.js', './js/interior-render.js', './js/home-interactions.js',
+  './js/life.js', './js/day-night.js', './js/crowd.js',
   './vendor/GLTFLoader.js', './vendor/BufferGeometryUtils.js', './vendor/meshopt_decoder.module.js',
   // модели (~3.4 МБ): машины гаража и трафик — чтобы гараж работал и без интернета
   './assets/cars/cayenne.glb', './assets/cars/gt3.glb', './assets/cars/f458.glb', './assets/cars/cgt.glb',
   './assets/traffic.glb',
   './assets/characters/hero-1.glb', './assets/characters/hero-2.glb', './assets/characters/motion.json',
+  './assets/characters/hero-1-smart.glb', './assets/characters/hero-2-smart.glb',
+  './assets/characters/citizen-1.glb', './assets/characters/citizen-2.glb',
 ];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

@@ -33,7 +33,7 @@ function reachableCells() {
 const reachable = reachableCells();
 test('до всех восьми действий можно дойти от входа, не проходя сквозь мебель', () => {
   assert.deepEqual(layout.interactions.map(i => i.id), ['sofa', 'bed', 'book', 'water', 'stove', 'cabinet', 'tv', 'light']);
-  assert.equal(makeInteriorLayout('shop').interactions.length, 0);
+  assert.deepEqual(makeInteriorLayout('shop').interactions.map(i => i.id), ['cashier']);
   for (const item of layout.interactions) {
     assert.equal(circleVsAABBs(item.x, item.z, HERO_RADIUS, layout.colliders), null, `${item.id}: маркер не на мебели`);
     const valid = reachable.filter(p => !nearInteriorExit(p, layout) && nearestHomeInteraction(p, layout.interactions)?.id === item.id);

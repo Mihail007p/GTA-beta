@@ -23,6 +23,7 @@ import { wrapAngle, dampAngle, damp } from './car-physics.js';
 import { turnLook } from './look-controls.js';
 import { createHero, cloneHeroForDriver } from './hero-model.js';
 import { characterById } from './characters.js';
+import { daylight } from './day-night.js';
 import { buildEntranceMeshes, buildInteriorScene, disposeInteriorScene, updateHomeScene, highlightHomeInteraction } from './interior-render.js';
 
 const BUILDING_TINTS = [0xb8b2a8, 0xa39e98, 0xc4b8a4, 0x9aa3ad, 0xb5a08f, 0x8f98a3, 0xcfc6b6, 0xa8988a];
@@ -102,6 +103,9 @@ export class Renderer {
     this.orbit = null;          // режим витрины (меню/гараж)
     this.heroActor = null; this.heroId = null; this.heroVisible = false; this._heroRequest = 0;
     this.driverActor = null;
+    this.citizenTemplates = []; this.crowdActors = []; this.vendorActor = null;
+    this._crowdPromise = null; this.heroOutfit = 'street';
+    this.buildJobMarker();
 
     // perf
     this.frames = 0;
@@ -133,6 +137,7 @@ export class Renderer {
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     this.skyTex = tex;
+    this.skyCanvas = c;
 
     const geo = new THREE.SphereGeometry(CONFIG.camera.far * 0.9, 24, 16);
     const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false });
@@ -140,6 +145,52 @@ export class Renderer {
     this.sky.renderOrder = 1000;     // последним среди непрозрачных: закрытое домами не красим
     this.sky.frustumCulled = false;
     this.scene.add(this.sky);
+  }
+
+  // Освещение обновляется по минутам устройства, а не ускоряет 24-часовые сутки.
+  setWorldTime(hour) {
+    const { day, night, twilight, phase } = daylight(hour);
+    const mix = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+    const stops = [0, 0.20, 0.36, 0.45, 0.50, 0.56, 1];
+    const dayColors = [0x2c5da3, 0x5595cb, 0x9ac5dc, 0xc6d1d1, 0xd5c7b3, 0x9c9a91, 0x9c9a91];
+    const nightColors = [0x040a20, 0x09132d, 0x13223b, 0x263044, 0x354052, 0x293343, 0x293343];
+    const ctx = this.skyCanvas.getContext('2d'), gradient = ctx.createLinearGradient(0, 0, 0, 256);
+    for (let i = 0; i < stops.length; i++) {
+      const c = mix(nightColors[i], dayColors[i], day);
+      if (i >= 3 && i <= 5) c.lerp(new THREE.Color(0xe88665), twilight * 0.55);
+      gradient.addColorStop(stops[i], c.getStyle());
+    }
+    ctx.fillStyle = gradient; ctx.fillRect(0, 0, 4, 256); this.skyTex.needsUpdate = true;
+    const fog = mix(0x344051, 0xb0c1c8, day).lerp(new THREE.Color(0xbc897c), twilight * 0.35);
+    this.scene.background.copy(fog); this.scene.fog.color.copy(fog);
+    this.hemi.intensity = 1.05 + 1.65 * day;
+    this.sun.intensity = 0.50 + 2.7 * day;
+    this.sun.color.copy(mix(0x8aa6d6, 0xffe5bd, day)).lerp(new THREE.Color(0xffad76), twilight * 0.45);
+    this.fill.intensity = 0.26 + 0.34 * day;
+    // Тени перемещаются вместе с солнцем; ночью оставляем мягкий лунный свет.
+    const angle = (hour - 6) * Math.PI / 12;
+    this.sunOffset.set(-80 * Math.cos(angle), 30 + 55 * Math.max(0, phase), 45);
+    const f = this.sunOffset.clone().negate().normalize();
+    this._lightRight.crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
+    this._lightUp.crossVectors(this._lightRight, f).normalize(); this._lightFwd.copy(f);
+    this.windowUniforms.uWindowGlow.value = 0.08 + night * 0.72;
+    if (this.lampPools) { this.lampPools.visible = night > 0.2; this.lampPools.material.opacity = 0.30 * night; }
+    if (this.lampHeads) this.lampHeads.material.color.setHex(night > 0.2 ? 0xffe2b0 : 0x7a7d79);
+  }
+
+  buildJobMarker() {
+    const group = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.90, 28),
+      new THREE.MeshBasicMaterial({ color: 0xffdb50, toneMapped: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.22; group.add(ring);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 10, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffdd61, transparent: true, opacity: 0.38, depthWrite: false, toneMapped: false }));
+    beam.position.y = 5.2; group.add(beam); group.visible = false;
+    this.scene.add(group); this.jobMarker = group;
+  }
+  setJobTarget(door) {
+    this.jobMarker.visible = !!door;
+    if (door) this.jobMarker.position.set(door.x, 0, door.z);
   }
 
   // ----------------------------------------------------------------- СВЕТ ---
@@ -755,6 +806,7 @@ export class Renderer {
     this.interiorScene = buildInteriorScene(layout, variation);
     this.interiorHash = hash;
     this.setInteriorView(true);
+    if (layout.kind === 'shop') this.ensureVendor();
   }
 
   setInteriorView(show) {
@@ -766,6 +818,7 @@ export class Renderer {
   }
 
   closeInterior() {
+    this.clearVendor();
     this.setInteriorView(false);
     if (this.interiorScene) disposeInteriorScene(this.interiorScene);
     this.interiorScene = null;
@@ -809,12 +862,13 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------- ПЕРСОНАЖ ---
-  async setHero(id) {
-    const def = characterById(id);
+  async setHero(id, outfit = 'street') {
+    const base = characterById(id);
+    const def = base && outfit === 'smart' ? { ...base, model: `assets/characters/${id}-smart.glb` } : base;
     if (!def) return false;
     // Уничтожаем устаревшие результаты загрузки: быстрые нажатия стрелок
     // не должны подменить последнего выбранного героя более ранним запросом.
-    if (this.heroId === id && this.heroActor) { ++this._heroRequest; return true; }
+    if (this.heroId === id && this.heroOutfit === outfit && this.heroActor) { ++this._heroRequest; return true; }
     const request = ++this._heroRequest;
     let actor;
     try { actor = await createHero(def); }
@@ -823,10 +877,60 @@ export class Renderer {
     // Временный водитель делит текстуры с текущим героем.
     this.clearDriver();
     if (this.heroActor) { this.heroActor.root.removeFromParent(); this.heroActor.dispose(); }
-    this.heroActor = actor; this.heroId = id;
+    this.heroActor = actor; this.heroId = id; this.heroOutfit = outfit;
     actor.root.visible = this.heroVisible;
     (this.inInterior && this.interiorScene ? this.interiorScene : this.scene).add(actor.root);
     return true;
+  }
+
+  // Две отдельно сгенерированные модели с общими геометриями в пуле из 4
+  // прохожих. У каждого экземпляра свой скелет; тени отключены ради бюджета.
+  async loadCitizens() {
+    if (this._crowdPromise) return this._crowdPromise;
+    this._crowdPromise = Promise.all([
+      createHero({ model: 'assets/characters/citizen-1.glb', height: 1.76 }),
+      createHero({ model: 'assets/characters/citizen-2.glb', height: 1.67 }),
+    ]).then(sources => {
+      this.citizenTemplates = sources;
+      for (let i = 0; i < 4; i++) {
+        const actor = cloneHeroForDriver(sources[i % sources.length]);
+        actor.root.traverse(o => { if (o.isMesh) o.castShadow = false; });
+        actor.root.visible = false; this.scene.add(actor.root); this.crowdActors.push(actor);
+      }
+      if (this.interiorScene && this.interiorHash && this._shopOpen) this.ensureVendor();
+      return true;
+    }).catch(err => { console.warn('[crowd] модели жителей не загрузились', err); this._crowdPromise = null; return false; });
+    return this._crowdPromise;
+  }
+  updateCrowd(crowd, dt, visible) {
+    const direction = this._tmp.v2;
+    if (visible) this.camera.getWorldDirection(direction);
+    for (let i = 0; i < this.crowdActors.length; i++) {
+      const actor = this.crowdActors[i], person = crowd?.people[i];
+      const dx = person?.alive ? person.x - this.camera.position.x : 0;
+      const dz = person?.alive ? person.z - this.camera.position.z : 0;
+      // У скелетных мешей отключён обычный frustum culling (анимация выводит
+      // конечности за исходный bbox). Отсекаем целого человека, если он далеко
+      // или гарантированно за камерой, чтобы не рисовать все меши вне экрана.
+      actor.root.visible = !!(visible && person?.alive && dx * dx + dz * dz < 3600 && dx * direction.x + dz * direction.z > -3);
+      if (!actor.root.visible) continue;
+      actor.root.position.set(person.x, person.y || 0, person.z);
+      actor.root.rotation.y = Math.PI / 2 - person.heading;
+      actor.update(dt, person.speed, false);
+    }
+    if (this.vendorActor && this.inInterior) this.vendorActor.update(dt, 0, false);
+  }
+  ensureVendor() {
+    this._shopOpen = true;
+    if (!this.interiorScene || this.vendorActor || !this.citizenTemplates.length) return;
+    const actor = cloneHeroForDriver(this.citizenTemplates[0]);
+    actor.root.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    actor.root.position.set(2.55, 0, -5.42); actor.root.rotation.y = 0;
+    actor.update(0, 0, false); this.interiorScene.add(actor.root); this.vendorActor = actor;
+  }
+  clearVendor() {
+    this._shopOpen = false;
+    if (this.vendorActor) { this.vendorActor.root.removeFromParent(); this.vendorActor.dispose(); this.vendorActor = null; }
   }
 
   showHero(show) {

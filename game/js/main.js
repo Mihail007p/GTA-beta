@@ -25,6 +25,9 @@ import { VehicleWorld } from './vehicles.js';
 import { makeEntrances, nearestEntrance, makeInteriorLayout, makeInteriorHash, nearInteriorExit, findReturnSpot } from './interiors.js';
 import { makeHomeState, nearestHomeInteraction, homeActionMode, toggleHomeItem, startHomePose, requestStand, stepHomePose } from './home-interactions.js';
 import { UI } from './ui.js';
+import { buyItem, buyOutfit, useItem, cookRecipe, stepNeeds, damage, acceptJob, completeJob, taxiDestination, TAXI_FARES } from './life.js';
+import { localHour, clockText, daylight } from './day-night.js';
+import { makeCrowd, stepCrowd, nearestCitizen } from './crowd.js';
 
 const ui = new UI();
 let save = loadSave();
@@ -32,7 +35,9 @@ let R = null, city, hash, traffic, input, footInput;
 let car, def, col, g, hero, vehicles;
 let onFoot = true;
 let pendingEntry = null, driverEvent = null;
-let entrances = [], interior = null, roomTransition = null;
+let entrances = [], entranceById = new Map(), interior = null, roomTransition = null;
+let crowd = null, lifeChanging = false, worldMinute = null, worldClock = '';
+let footHitCd = 0;
 let doorsTipShown = false;
 const previewHero = { x: 0, z: 0, y: 0, heading: 0.6, speed: 0, running: false };
 let state = 'loading';
@@ -44,7 +49,7 @@ let lastNow = 0;
 const visual = { roll: 0, pitch: 0, braking: false };
 const fx = {
   prevSkid: [null, null], stuckT: 0, impactCd: 0, hapticCd: 0, lastDist: 0,
-  wasReset: false, smokeAcc: 0,
+  wasReset: false, smokeAcc: 0, healthCd: 0,
 };
 const PH = CONFIG.physics;
 
@@ -78,11 +83,13 @@ async function boot() {
   hash = buildSpatialHash(city.colliders, 30);
   R.camHash = R.outdoorHash = hash;
   entrances = makeEntrances(city, hash);
+  entranceById = new Map(entrances.map(d => [d.id, d]));
 
   ui.setLoading(0.4, 'Дома и улицы…');
   await nextFrame();
   R.buildCity(city);
   R.buildEntrances(city, entrances);
+  R.setWorldTime(localHour());
   ui.buildMinimap(city);
 
   ui.setLoading(0.6, 'Трафик…');
@@ -98,7 +105,9 @@ async function boot() {
   setActiveCar(save.activeCar, true);
   newRun();
   ui.setLoading(0.80, 'Готовим персонажа…');
-  await Promise.race([R.setHero(save.selectedCharacter), new Promise(r => setTimeout(r, 12000))]);
+  await Promise.race([R.setHero(save.selectedCharacter, save.life.outfit), new Promise(r => setTimeout(r, 12000))]);
+  // Жители загружаются отдельно: медленный накопитель не блокирует старт игры.
+  R.loadCitizens();
 
   ui.setLoading(0.86, 'Подготовка шейдеров…');
   await nextFrame();
@@ -116,7 +125,7 @@ async function boot() {
   ui.syncSettings(save);
   ui.setLoading(1, 'Готово');
   await nextFrame();
-  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get vehicles() { return vehicles; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get pendingEntry() { return pendingEntry; }, get entrances() { return entrances; }, get interior() { return interior; }, get roomTransition() { return roomTransition; }, get city() { return city; }, get g() { return g; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
+  window.__game = { get input() { return input; }, get footInput() { return footInput; }, get save() { return save; }, get traffic() { return traffic; }, get car() { return car; }, get vehicles() { return vehicles; }, get hero() { return hero; }, get onFoot() { return onFoot; }, get pendingEntry() { return pendingEntry; }, get entrances() { return entrances; }, get interior() { return interior; }, get roomTransition() { return roomTransition; }, get city() { return city; }, get g() { return g; }, get crowd() { return crowd; }, get R() { return R; }, get state() { return state; }, setState: (s) => { state = s; } };
   await waitStartTap();
   goMenu();
   lastNow = performance.now();
@@ -146,6 +155,7 @@ function newRun() {
   if (!spot) throw new Error('Не удалось найти безопасную стартовую позицию героя');
   hero = makePedestrian(spot.x, spot.z, spot.heading);
   hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
+  crowd = makeCrowd(); stepCrowd(crowd, city, hash, hero, 0);
   onFoot = true;
   ui.setOnFoot(true);
   if (R) R.showHero(false); // герой показывается после выхода из меню
@@ -232,7 +242,7 @@ function goMenu() {
   R.showHero(false);
   if (R.playerMesh) R.playerMesh.visible = true;
   // Также отменяет незавершённую загрузку другого предпросматриваемого героя.
-  R.setHero(save.selectedCharacter);
+  R.setHero(save.selectedCharacter, save.life.outfit);
   if (input) input.setActive(false);
   if (footInput) footInput.setActive(false);
   ui.syncMenu(save);
@@ -270,7 +280,7 @@ function goCharacter() {
 function previewCharacter(id) {
   ui.characterStatus('Загружаем модель…');
   R.showHero(false);
-  R.setHero(id).then(ok => {
+  R.setHero(id, save.life.outfit).then(ok => {
     if (state !== 'character' || CHARACTERS[ui.characterIdx].id !== id) return;
     ui.characterStatus(ok ? '' : 'Модель не загрузилась. Проверьте соединение и повторите.');
     R.showHero(ok);
@@ -297,7 +307,7 @@ function goPlay() {
   R.showHero(onFoot && R.heroId === save.selectedCharacter);
   if (onFoot && R.heroId !== save.selectedCharacter) {
     ui.toast('Загружаем героя…');
-    R.setHero(save.selectedCharacter).then(ok => {
+    R.setHero(save.selectedCharacter, save.life.outfit).then(ok => {
       if (ok && onFoot && state === 'play') R.showHero(true);
       else if (!ok && onFoot && state === 'play') ui.toast('Не удалось загрузить героя');
     });
@@ -373,10 +383,15 @@ function footAction() {
     if (hero.pose) return { mode: hero.pose.leaving ? 'home-rising' : 'home-stand' };
     if (nearInteriorExit(hero, interior.layout)) return { mode: 'room-exit' };
     const item = nearestHomeInteraction(hero, interior.layout.interactions);
+    if (item?.kind === 'shop') return { mode: 'shop-buy', item };
     return { mode: homeActionMode(item, interior.homeState), item };
   }
   const door = nearestEntrance(hero, entrances);
   const vehicle = vehicles.nearest(hero);
+  const person = R.crowdActors.length ? nearestCitizen(hero, crowd) : null;
+  if (door && save.life.job?.targetId === door.id) return { mode: 'job-deliver', door };
+  if (person && (!door || Math.hypot(hero.x - person.x, hero.z - person.z) < Math.hypot(hero.x - door.x, hero.z - door.z)) &&
+      (!vehicle || Math.hypot(hero.x - person.x, hero.z - person.z) < carEntryDistance(hero, vehicle.car, vehicle.def))) return { mode: 'citizen-talk', person };
   if (door && (!vehicle || Math.hypot(hero.x - door.x, hero.z - door.z) <= carEntryDistance(hero, vehicle.car, vehicle.def))) {
     return { mode: 'enter-' + door.kind, door };
   }
@@ -429,7 +444,7 @@ function enterInterior(door) {
     R.updateHero(hero, 0); R.showHero(true);
     driverEvent = null; R.clearDriver();
     ui.setInside(door.kind); ui.hint('');
-    ui.toast(homeState ? 'Голубые метки — действия с предметами' : 'Чтобы выйти, подойдите к двери');
+    ui.toast(homeState ? 'У плиты можно готовить, у шкафа — переодеться' : 'Подойдите к метке у прилавка: покупки и заказы');
   });
 }
 function exitInterior() {
@@ -455,6 +470,18 @@ function toggleVehicle() {
   if (onFoot) {
     const action = footAction();
     if (action.mode === 'room-exit') { exitInterior(); return; }
+    if (action.mode === 'shop-buy') { openLife('shop'); return; }
+    if (action.mode === 'job-deliver') {
+      const result = completeJob(save, action.door); ui.toast(result.message);
+      if (result.ok) { markDirty(); flushNow(); R.setJobTarget(null); }
+      return;
+    }
+    if (action.mode === 'citizen-talk') {
+      const phrases = ['Здравствуйте! У продавца есть заказы на доставку.', 'Привет! Дома можно отдохнуть и приготовить еду.', 'Добрый день! Жёлтая метка ведёт к адресу заказа.', 'Следите за здоровьем и сытостью вверху экрана.'];
+      action.person.pause = 2.5; action.person.speed = 0;
+      action.person.heading = Math.atan2(hero.z - action.person.z, hero.x - action.person.x);
+      ui.toast(phrases[action.person.id % phrases.length]); return;
+    }
     if (interior) {
       if (action.mode === 'home-stand') { requestStand(hero); R._camInit = false; return; }
       if (action.mode === 'home-rising') return;
@@ -498,7 +525,7 @@ function toggleVehicle() {
   if (!carIsStopped(car)) { ui.toast('Сначала остановите машину'); return; }
   if (!R.heroActor || R.heroId !== save.selectedCharacter) {
     ui.toast('Загружаем героя. Попробуйте ещё раз');
-    R.setHero(save.selectedCharacter).then(ok => { if (!ok && state === 'play') ui.toast('Не удалось загрузить героя'); });
+    R.setHero(save.selectedCharacter, save.life.outfit).then(ok => { if (!ok && state === 'play') ui.toast('Не удалось загрузить героя'); });
     return;
   }
   const spot = findExitSpot(car, def, hash, traffic, vehicles.current.ref);
@@ -524,7 +551,83 @@ window.addEventListener('keydown', e => {
   if (e.repeat || state !== 'play') return;
   if (e.code === 'KeyE') { e.preventDefault(); toggleVehicle(); }
   if (e.code === 'KeyT') { e.preventDefault(); toggleSeatedTv(); }
+  if (e.code === 'KeyB') { e.preventDefault(); openLife('bag'); }
+  if (e.code === 'KeyF') { e.preventDefault(); lifeContext(); }
 });
+
+// Окно покупок/рюкзака ставит симуляцию на паузу и снимает удерживаемый ввод.
+function lifeContext() {
+  if (state !== 'play' || !interior?.homeState || roomTransition || hero.pose) return;
+  const item = nearestHomeInteraction(hero, interior.layout.interactions);
+  if (item?.id === 'stove') openLife('cook');
+  else if (item?.id === 'cabinet') {
+    if (!interior.homeState.cabinet) { ui.toast('Сначала откройте шкаф основной кнопкой'); return; }
+    openLife('wardrobe');
+  }
+}
+function lifeContextInfo() { return { stove: !!interior?.homeState?.stove, changing: lifeChanging, canTaxi: !!(onFoot && !interior && !roomTransition && !pendingEntry) }; }
+function openLife(mode) {
+  if (state !== 'play' || roomTransition || pendingEntry) return;
+  if (mode !== 'bag') {
+    if (!onFoot || !interior) return;
+    const item = nearestHomeInteraction(hero, interior.layout.interactions);
+    if ((mode === 'shop' && item?.id !== 'cashier') || (mode === 'cook' && item?.id !== 'stove') ||
+        (mode === 'wardrobe' && item?.id !== 'cabinet')) return;
+  }
+  state = 'life'; input.setActive(false); footInput.setActive(false);
+  ui.openLife(mode, save, lifeContextInfo());
+  flushNow();
+}
+function closeLife() {
+  if (state !== 'life') return;
+  if (lifeChanging) { ui.renderLife(save, lifeContextInfo(), 'Подождите загрузку одежды…'); return; }
+  goPlay();
+}
+function takeTaxi(type) {
+  if (state !== 'life' || ui.lifeMode !== 'bag' || !onFoot || interior || roomTransition || pendingEntry) return;
+  const fare = TAXI_FARES[type];
+  const door = taxiDestination(type, hero, entrances, save.life.job);
+  if (!Number.isFinite(fare) || !door) { ui.renderLife(save, lifeContextInfo(), 'Нет подходящего адреса или вы уже рядом'); return; }
+  if (save.money < fare) { ui.renderLife(save, lifeContextInfo(), `Не хватает $ ${fare - Math.floor(save.money)}`); return; }
+  const spot = findReturnSpot(door, { x: door.x, z: door.z }, hash, car, def, traffic);
+  if (!spot) { ui.renderLife(save, lifeContextInfo(), 'У адреса нет свободного места. Попробуйте позже'); return; }
+  save.money = Math.round((save.money - fare) * 100) / 100;
+  markDirty(); flushNow(); goPlay();
+  startRoomTransition(() => {
+    hero = makePedestrian(spot.x, spot.z, Math.atan2(-door.nz, -door.nx));
+    hero.y = isOnRoad(city, hero.x, hero.z) ? 0 : 0.16;
+    R.updateHero(hero, 0); R.showHero(true); R._camInit = false;
+    ui.toast(`Такси: быстрый переезд · −$ ${fare}. Ваша машина осталась на месте`);
+  });
+}
+function lifeAction(action, id) {
+  if (state !== 'life' || lifeChanging) return;
+  const mode = ui.lifeMode;
+  let result = null;
+  if (mode === 'shop' && action === 'buy') result = buyItem(save, id);
+  else if (mode === 'shop' && action === 'buy-outfit') result = buyOutfit(save, id);
+  else if (mode === 'shop' && action === 'job') result = acceptJob(save.life, id, interior?.door, entrances);
+  else if (mode === 'bag' && action === 'use') result = useItem(save.life, id);
+  else if (mode === 'bag' && action === 'taxi') { takeTaxi(id); return; }
+  else if (mode === 'bag' && action === 'cancel-job' && save.life.job) { save.life.job = null; result = { ok: true, message: 'Заказ отменён' }; }
+  else if (mode === 'cook' && action === 'cook') result = cookRecipe(save.life, id, !!interior?.homeState?.stove);
+  else if (mode === 'wardrobe' && action === 'wear' && save.life.outfits.includes(id)) {
+    lifeChanging = true;
+    ui.renderLife(save, lifeContextInfo(), 'Загружаем одежду…');
+    R.setHero(save.selectedCharacter, id).then(ok => {
+      lifeChanging = false;
+      if (ok) {
+        save.life.outfit = id; markDirty(); flushNow();
+        R.updateHero(hero, 0); R.showHero(true);
+      }
+      if (state === 'life') ui.renderLife(save, lifeContextInfo(), ok ? 'Одежда изменена' : 'Не удалось загрузить одежду');
+    });
+    return;
+  }
+  if (!result) return;
+  if (result.ok) { markDirty(); flushNow(); }
+  ui.renderLife(save, lifeContextInfo(), result.message);
+}
 
 // ----------------------------------------------------------- ПОЛНЫЙ ЭКРАН --
 // Браузер даёт полный экран только по жесту (для касаний — click/pointerup, не pointerdown).
@@ -628,6 +731,10 @@ function bindUi() {
     },
     vehicle: () => toggleVehicle(),
     homeTv: () => toggleSeatedTv(),
+    openLife: (mode) => openLife(mode),
+    closeLife: () => closeLife(),
+    lifeContext: () => lifeContext(),
+    lifeAction: (action, id) => lifeAction(action, id),
     garageBack: () => leaveGarage(),
     resume: () => { enterFullscreen(); goPlay(); },
     pause: () => goPause(),
@@ -664,7 +771,7 @@ function bindUi() {
       audio.setEnabled(!!save.settings.sound);
       ui.syncSettings(save);
       ui.syncMenu(save);
-      R.setHero(save.selectedCharacter);
+      R.setHero(save.selectedCharacter, save.life.outfit);
     },
   };
   input.onFirstTouch = () => ensureAudio();
@@ -678,13 +785,26 @@ function loop(now) {
   lastNow = now;
   if (!(dt > 0)) return;
   if (dt > 0.1) dt = 0.1;
-  if (state === 'pause' || state === 'loading') return;   // статичный кадр — не тратим батарею
+  if (state === 'pause' || state === 'loading' || state === 'life') return;   // статичный кадр — не тратим батарею
   frame(dt, now);
 }
 
 function frame(dt, now) {
   time += dt;
   const playing = state === 'play';
+  const date = new Date(), minute = Math.floor(date.getTime() / 60000);
+  if (minute !== worldMinute) {
+    worldMinute = minute; const hour = localHour(date); R.setWorldTime(hour);
+    worldClock = (daylight(hour).day > 0.4 ? '☀ ' : '☾ ') + clockText(date);
+  }
+  const target = save.life.job ? entranceById.get(save.life.job.targetId) : null;
+  R.setJobTarget(target || null);
+  if (playing) {
+    const rest = onFoot && interior?.homeState && hero.pose && !hero.pose.leaving && hero.pose.amount > 0.8 ? hero.pose.kind : null;
+    stepNeeds(save.life, dt, { rest, starvationDamage: save.settings.starvationDamage });
+    markDirty();
+    fx.healthCd = Math.max(0, fx.healthCd - dt); footHitCd = Math.max(0, footHitCd - dt);
+  }
   if (playing && roomTransition) stepRoomTransition(dt);
   if (playing && pendingEntry) {
     pendingEntry.elapsed += dt;
@@ -730,7 +850,16 @@ function frame(dt, now) {
   if (!interior && !roomTransition) {
     vehicles.sync();
     stepTraffic(traffic, city, Math.min(dt, 0.05), CONFIG.traffic, onFoot && playing ? hero : car, onFoot && playing ? car : null);
-    if (playing) stepDriver(dt);
+    if (playing) {
+      stepDriver(dt);
+      stepCrowd(crowd, city, hash, onFoot ? hero : car, dt);
+      if (onFoot && !pendingEntry && footHitCd <= 0) {
+        const hit = traffic.cars.find(t => t.alive && !t.playerControlled && !t.noRender && Math.abs(t.speed) > 4 &&
+          Math.hypot(t.x - hero.x, t.z - hero.z) < 4 && circleVsCar(hero.x, hero.z, HERO_RADIUS,
+            { x: t.x, z: t.z, heading: t.visHeading ?? t.heading }, t.length || (t.half || 1) * 2 + 1.9, t.width || 1.9));
+        if (hit) { damage(save.life, Math.min(30, 8 + Math.abs(hit.speed) * 1.5)); footHitCd = 2; ui.flashHit(0.6); markDirty(); }
+      }
+    }
   }
 
   if (driving) {
@@ -744,6 +873,12 @@ function frame(dt, now) {
   } else {
     // Чекпоинты и их таймер не тикают, пока игрок гуляет пешком.
     audio.update({ speed: 0, throttle: 0, drifting: false, lateral: 0, topSpeed: def.topSpeed }, dt);
+  }
+
+  if (playing && save.life.health <= 0) {
+    save.life.health = 50; save.life.satiety = Math.max(30, save.life.satiety);
+    if (!onFoot) { stopParkedCar(car); vehicles.sync(); }
+    respawn(); markDirty(); flushNow(); ui.toast('Вы потеряли сознание и пришли в себя. Здоровье восстановлено до 50');
   }
 
   const rollT = driving ? clamp(-car.accelLat * 0.0042, -0.075, 0.075) : 0;
@@ -769,17 +904,20 @@ function frame(dt, now) {
     R.updateCheckpoints(g.checkpoints, time);
     R.updateParticles(dt);
   }
+  R.updateCrowd(crowd, dt, playing && !interior && !roomTransition);
   R.adaptPerformance(dt);
   R.render();
 
   if (playing) {
     if (onFoot && !pendingEntry) ui.setVehicleAction(roomTransition ? 'none' : (roomAction || footAction()).mode);
+    ui.setLifeContext(!roomTransition && !hero.pose && interior?.homeState && roomAction?.item?.id === 'stove' ? 'cook'
+      : !roomTransition && !hero.pose && interior?.homeState && roomAction?.item?.id === 'cabinet' ? 'wardrobe' : null);
     ui.setHomeTvAction(!!(interior?.homeState && hero.pose?.kind === 'sit' && !hero.pose.leaving && !roomTransition), !!interior?.homeState?.tv);
     const st = save.settings;
     const player = onFoot ? hero : car;
     ui.updateHud({
       car: player, def, g, dt, onFoot, interior: interior?.layout.kind || null,
-      money: save.money,
+      money: save.money, life: save.life, clock: worldClock, jobTarget: target,
       nearest: interior ? null : nearestCheckpoint(g, player.x, player.z),
       camYaw: R.camYaw,
       fpsText: st.showFps ? `${Math.round(R.fps)} FPS · ${R.renderW}×${R.renderH} · ${R.drawCalls} dc` : '',
@@ -821,6 +959,9 @@ function onImpact(imp, ivx, ivz, dt) {
   fx.impactCd -= dt;
   fx.hapticCd -= dt;
   if (imp <= 2) return;
+  if (imp > 6 && fx.healthCd <= 0) {
+    damage(save.life, Math.min(25, (imp - 6) * 1.5)); fx.healthCd = 1.2; markDirty();
+  }
   car.stats.collisions++;
   shake = Math.max(shake, Math.min(0.9, imp * CONFIG.camera.shakeOnImpact * 0.08));
   ui.flashHit(Math.min(0.7, (imp - 2) / 14));
@@ -917,6 +1058,7 @@ if (ANDROID_APP) {
   window.__openStreetAndroidBack = () => {
     if (ui.screen === 'credits') { ui.show('settings'); return true; }
     if (ui.screen === 'settings') { ui.show(ui.settingsReturn); return true; }
+    if (state === 'life') { closeLife(); return true; }
     if (state === 'play') { goPause(); return true; }
     if (state === 'pause') { goPlay(); return true; }
     if (state === 'garage') { leaveGarage(); return true; }

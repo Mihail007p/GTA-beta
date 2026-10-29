@@ -49,6 +49,8 @@ try {
     const s = window.__game.save;
     Object.assign(s, { money: 7500, bestScore: 4321, ownedCars: ['strada', 'vektor'], activeCar: 'vektor' });
     s.settings.quality = 'low';
+    s.homeStates = { '371': { tv: true, light: false } };
+    delete s.life; // формат 0.14: здоровья и инвентаря ещё нет
     delete s.selectedCharacter;
     localStorage.setItem('openstreet.save.v1', JSON.stringify(s));
     window.__workerChanged = false;
@@ -75,9 +77,10 @@ try {
   const loaded = await page.evaluate(() => ({
     money: __game.save.money, score: __game.save.bestScore, cars: [...__game.save.ownedCars],
     activeCar: __game.save.activeCar, hero: __game.save.selectedCharacter,
+    oldHome: __game.save.homeStates['371'].tv, starter: [__game.save.life.inventory.apple, __game.save.life.inventory.bread, __game.save.life.inventory.egg],
   }));
-  assert.deepEqual(loaded, { money: 7500, score: 4321, cars: ['strada', 'vektor'], activeCar: 'vektor', hero: 'hero-1' });
-  console.log(`Старый кэш → ${currentCache}: деньги, рекорд, машины и выбранный автомобиль сохранены; герой добавлен.`);
+  assert.deepEqual(loaded, { money: 7500, score: 4321, cars: ['strada', 'vektor'], activeCar: 'vektor', hero: 'hero-1', oldHome: true, starter: [1, 1, 1] });
+  console.log(`Старый кэш → ${currentCache}: деньги, машины, домашние действия сохранены; инвентарь добавлен.`);
   await ctx.setOffline(true);
   await page.reload();
   await menu();
@@ -96,7 +99,13 @@ try {
   });
   await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в магазин', null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  await page.waitForFunction(() => __game.interior?.layout.kind === 'shop' && !__game.roomTransition, null, { timeout: 30000 });
+  await page.waitForFunction(() => __game.interior?.layout.kind === 'shop' && !__game.roomTransition && __game.R.vendorActor, null, { timeout: 60000 });
+  await page.evaluate(() => { const i = __game.interior.layout.interactions[0]; Object.assign(__game.hero, { x: i.x, z: i.z, vx: 0, vz: 0, speed: 0 }); });
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Поговорить с продавцом', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator('[data-action="buy"][data-id="bread"]').click();
+  assert.equal(await page.evaluate(() => __game.save.money), 7485);
+  await page.locator('#life-back').click();
   await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
   await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу', null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
@@ -108,6 +117,14 @@ try {
   await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в дом', null, { timeout: 30000 });
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForFunction(() => __game.interior?.layout.kind === 'home' && !__game.roomTransition, null, { timeout: 30000 });
+  await page.evaluate(() => { const i = __game.interior.layout.interactions.find(x => x.id === 'stove'); Object.assign(__game.hero, { x: i.x, z: i.z, vx: 0, vz: 0, speed: 0 }); });
+  await page.waitForFunction(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Включить плиту', null, { timeout: 30000 });
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction(() => __game.interior.homeState.stove, null, { timeout: 30000 });
+  await page.locator('#life-context-action').click();
+  await page.locator('[data-action="cook"][data-id="breakfast"]').click();
+  assert.equal(await page.evaluate(() => __game.save.life.inventory.meal), 1);
+  await page.locator('#life-back').click();
   await page.evaluate(() => {
     const sofa = __game.interior.layout.interactions.find(i => i.id === 'sofa');
     Object.assign(__game.hero, { x: sofa.x, z: sofa.z, vx: 0, vz: 0, speed: 0 });
@@ -119,9 +136,9 @@ try {
   assert.ok(tvButton);
   await page.touchscreen.tap(tvButton.x + tvButton.width / 2, tvButton.y + tvButton.height / 2);
   await page.waitForFunction(() => __game.interior.homeState.tv && __game.R.interiorScene.userData.home.tvPicture.visible, null, { timeout: 30000 });
-  assert.equal(await page.evaluate(() => __game.save.money), 7500);
+  assert.equal(await page.evaluate(() => __game.save.money), 7485);
   assert.deepEqual(errors, []);
-  console.log('Обновлённая игра, герой, магазин, диван и телевизор работают без сети; сохранение не потеряно.');
+  console.log('После обновления офлайн работают продавец, покупка, готовка, диван и телевизор; старые данные сохранены.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

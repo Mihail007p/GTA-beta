@@ -7,6 +7,7 @@ import { CARS } from './cars.js';
 import { CHARACTERS } from './characters.js';
 import { CONFIG, MS_TO_KMH } from './config.js';
 import { makeCarState, stepCar } from './car-physics.js';
+import { ITEMS, OUTFITS, JOBS, RECIPES, TAXI_FARES } from './life.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
@@ -48,7 +49,7 @@ export class UI {
   // ------------------------------------------------------------- ЭКРАНЫ ---
   show(name) {
     this.screen = name;
-    for (const s of ['loading', 'menu', 'garage', 'character', 'settings', 'credits', 'pause', 'fatal']) {
+    for (const s of ['loading', 'menu', 'garage', 'character', 'settings', 'credits', 'pause', 'life', 'fatal']) {
       $(s).classList.toggle('hidden', s !== name);
     }
     const playing = name === 'play';
@@ -102,6 +103,13 @@ export class UI {
     $('btn-reset').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.respawn && this.h.respawn(); });
     $('vehicle-action').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.vehicle && this.h.vehicle(); });
     $('home-tv-action').addEventListener('pointerdown', (e) => { e.preventDefault(); this.h.homeTv && this.h.homeTv(); });
+    $('btn-bag').addEventListener('pointerdown', e => { e.preventDefault(); this.h.openLife && this.h.openLife('bag'); });
+    $('life-context-action').addEventListener('pointerdown', e => { e.preventDefault(); this.h.lifeContext && this.h.lifeContext(); });
+    tap('life-back', () => this.h.closeLife && this.h.closeLife());
+    $('life-list').addEventListener('click', e => {
+      const button = e.target.closest('button[data-action]');
+      if (button && !button.disabled && this.h.lifeAction) this.h.lifeAction(button.dataset.action, button.dataset.id);
+    });
 
     for (const seg of document.querySelectorAll('.seg')) {
       seg.addEventListener('click', (e) => {
@@ -170,7 +178,7 @@ export class UI {
   syncCharacter(save) {
     const def = CHARACTERS[this.characterIdx];
     $('character-name').textContent = def.name;
-    $('character-desc').textContent = def.description;
+    $('character-desc').textContent = save.life?.outfit === 'smart' ? 'Нарядный костюм · куплен в магазине' : def.description;
     const btn = $('character-action');
     const selected = save.selectedCharacter === def.id;
     btn.textContent = selected ? 'ВЫБРАН ✓' : 'ВЫБРАТЬ';
@@ -191,6 +199,7 @@ export class UI {
   setInside(kind) {
     this._inside = kind || null;
     this.setHomeTvAction(false, false);
+    this.setLifeContext(null);
     document.body.classList.toggle('in-interior', !!kind);
     $('btn-reset').setAttribute('aria-label', kind ? 'Вернуться к выходу' : 'Вернуться к машине');
   }
@@ -210,6 +219,9 @@ export class UI {
       'enter-home': ['ВОЙТИ<br><span>В ДОМ</span>', 'Войти в дом'],
       'enter-shop': ['ВОЙТИ<br><span>В МАГАЗИН</span>', 'Войти в магазин'],
       'room-exit': ['ВЫЙТИ<br><span>НА УЛИЦУ</span>', 'Выйти на улицу'],
+      'shop-buy': ['ПРОДАВЕЦ<br><span>ПОКУПКИ И ЗАКАЗЫ</span>', 'Поговорить с продавцом'],
+      'job-deliver': ['ДОСТАВИТЬ<br><span>ЗАКАЗ</span>', 'Доставить заказ'],
+      'citizen-talk': ['ПРИВЕТ<br><span>ПРОХОЖЕМУ</span>', 'Поговорить с прохожим'],
       'home-sit': ['СЕСТЬ<br><span>НА ДИВАН</span>', 'Сесть на диван'],
       'home-lie': ['ЛЕЧЬ<br><span>НА КРОВАТЬ</span>', 'Лечь на кровать'],
       'home-stand': ['ВСТАТЬ<br><span>ИЛИ СТИК</span>', 'Встать'],
@@ -240,6 +252,76 @@ export class UI {
     button.classList.toggle('hidden', !show);
     button.innerHTML = `${on ? 'ВЫКЛЮЧИТЬ' : 'ВКЛЮЧИТЬ'}<br><span>ТЕЛЕВИЗОР</span>`;
     button.setAttribute('aria-label', `${on ? 'Выключить' : 'Включить'} телевизор с дивана`);
+  }
+
+  setLifeContext(mode) {
+    if (this._lifeContext === mode) return;
+    this._lifeContext = mode;
+    const b = $('life-context-action');
+    b.classList.toggle('hidden', !mode);
+    if (mode === 'cook') { b.innerHTML = 'ГОТОВИТЬ<br><span>У ПЛИТЫ</span>'; b.setAttribute('aria-label', 'Готовить у плиты'); }
+    if (mode === 'wardrobe') { b.innerHTML = 'ОДЕЖДА<br><span>У ШКАФА</span>'; b.setAttribute('aria-label', 'Переодеться у шкафа'); }
+  }
+
+  openLife(mode, save, context = {}) {
+    clearTimeout(this._toastTimer);
+    $('toast').classList.add('hidden');
+    this.lifeMode = mode;
+    $('life-list').scrollTop = 0;
+    this.renderLife(save, context);
+    this.show('life');
+  }
+  renderLife(save, context = {}, note = '') {
+    const mode = this.lifeMode, life = save.life, list = $('life-list');
+    const scrollTop = list.scrollTop;
+    list.replaceChildren();
+    const row = (title, detail, label, action, id = '', disabled = false) => {
+      const el = document.createElement('div'); el.className = 'life-row';
+      const info = document.createElement('div');
+      const strong = document.createElement('strong'); strong.textContent = title;
+      const small = document.createElement('small'); small.textContent = detail;
+      info.append(strong, small); el.appendChild(info);
+      if (action) {
+        const button = document.createElement('button'); button.className = 'btn-small accent';
+        button.type = 'button'; button.textContent = label; button.dataset.action = action;
+        button.dataset.id = id; button.disabled = disabled; el.appendChild(button);
+      }
+      list.appendChild(el);
+    };
+    const titles = { bag: 'Рюкзак', shop: 'Магазин и заказы', cook: 'Готовка', wardrobe: 'Гардероб' };
+    $('life-title').textContent = titles[mode] || 'Рюкзак';
+    $('life-summary').textContent = mode === 'shop' ? `Продавец: здравствуйте! Деньги: $ ${fmt(save.money)} · листайте список вниз`
+      : mode === 'cook' ? `Плита ${context.stove ? 'включена' : 'выключена'} · хлеб: ${life.inventory.bread} · яйцо: ${life.inventory.egg}`
+      : mode === 'wardrobe' ? 'Покупайте костюмы у продавца. Выбранная одежда сохраняется для обоих героев.'
+      : `Здоровье ${Math.ceil(life.health)} · сытость ${Math.ceil(life.satiety)} · готовые блюда и аптечки можно использовать здесь`;
+    if (mode === 'shop') {
+      for (const id of ['apple', 'bread', 'egg', 'medkit']) {
+        const item = ITEMS[id]; row(item.name, `${item.description} · в рюкзаке: ${life.inventory[id]}`, `КУПИТЬ $${item.price}`, 'buy', id);
+      }
+      row(OUTFITS.smart.name, 'Одежда для обоих героев · надеть у шкафа', life.outfits.includes('smart') ? 'КУПЛЕНО' : `КУПИТЬ $${OUTFITS.smart.price}`, 'buy-outfit', 'smart', life.outfits.includes('smart'));
+      for (const [id, job] of Object.entries(JOBS)) row(job.name, 'Доставьте посылку к жёлтой метке', `ВЗЯТЬ $${job.reward}`, 'job', id, !!life.job);
+    } else if (mode === 'bag') {
+      for (const [id, item] of Object.entries(ITEMS)) {
+        const usable = !!(item.satiety || item.health);
+        row(`${item.name} × ${life.inventory[id]}`, item.description, id === 'medkit' ? 'ЛЕЧИТЬСЯ' : 'СЪЕСТЬ', usable ? 'use' : null, id, !life.inventory[id]);
+      }
+      if (life.job) row('Активный заказ', `${JOBS[life.job.type].name} · жёлтая метка на карте`, 'ОТМЕНИТЬ', 'cancel-job');
+      else row('Заказы', 'Подойдите к продавцу в магазине', '', null);
+      const where = context.canTaxi ? 'Быстрый перенос без анимации поездки' : 'Доступно пешком на улице';
+      row('Такси к дому', where, `ВЫЗВАТЬ $${TAXI_FARES.home}`, 'taxi', 'home', !context.canTaxi);
+      row('Такси к магазину', where, `ВЫЗВАТЬ $${TAXI_FARES.shop}`, 'taxi', 'shop', !context.canTaxi);
+      if (life.job) row('Такси к адресу заказа', where, `ВЫЗВАТЬ $${TAXI_FARES.job}`, 'taxi', 'job', !context.canTaxi);
+    } else if (mode === 'cook') {
+      for (const [id, recipe] of Object.entries(RECIPES)) row(recipe.name, recipe.description, 'ПРИГОТОВИТЬ', 'cook', id);
+      row('Подсказка', 'Включите плиту основной кнопкой, затем готовьте. Еда появится в рюкзаке.', '', null);
+    } else if (mode === 'wardrobe') {
+      for (const [id, outfit] of Object.entries(OUTFITS)) {
+        const owned = life.outfits.includes(id);
+        row(outfit.name, owned ? 'Доступно' : 'Купить у продавца', life.outfit === id ? 'НАДЕТО' : owned ? 'НАДЕТЬ' : 'НЕТ', 'wear', id, !owned || life.outfit === id || !!context.changing);
+      }
+    }
+    list.scrollTop = scrollTop;
+    $('life-note').textContent = note;
   }
 
   // -------------------------------------------------------------- ГАРАЖ ---
@@ -371,8 +453,12 @@ export class UI {
         const low = g.timeLeft < 4;
         if (low !== L.low) { L.low = low; $('chain').classList.toggle('low', low); }
       }
+      const health = Math.ceil(s.life.health), satiety = Math.ceil(s.life.satiety);
+      if (health !== L.health) { L.health = health; $('health-value').textContent = '♥ ' + health; }
+      if (satiety !== L.satiety) { L.satiety = satiety; $('satiety-value').textContent = '◒ ' + satiety; }
+      if (s.clock !== L.clock) { L.clock = s.clock; $('clock-value').textContent = s.clock; }
       const cpTxt = s.interior ? (s.interior === 'shop' ? 'МАГАЗИН · ВЫХОД У ДВЕРИ' : 'ДОМ · ВЫХОД У ДВЕРИ')
-        : s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
+        : s.jobTarget ? 'ДОСТАВКА ' + Math.round(Math.hypot(s.jobTarget.x - car.x, s.jobTarget.z - car.z)) + ' м' : s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
       if (cpTxt !== L.cpTxt) { L.cpTxt = cpTxt; $('cp-dist').textContent = cpTxt; }
 
       const d = g.drift;
@@ -389,7 +475,7 @@ export class UI {
       this._mapT += s.dt;
       if (this._mapT >= 1 / 30) {
         this._mapT = 0;
-        this.drawMinimap(s.car, s.g.checkpoints, s.camYaw);
+        this.drawMinimap(s.car, s.g.checkpoints, s.camYaw, s.jobTarget);
       }
     }
   }
@@ -444,7 +530,7 @@ export class UI {
     this.mapCtx = $('minimap').getContext('2d');
   }
 
-  drawMinimap(car, checkpoints, camYaw) {
+  drawMinimap(car, checkpoints, camYaw, jobTarget = null) {
     const ctx = this.mapCtx;
     if (!ctx) return;
     const W = ctx.canvas.width, R = W / 2;
@@ -465,11 +551,11 @@ export class UI {
 
     // чекпоинты: внутри — точка, за краем — стрелка на кромке
     const cs = Math.cos(rot), sn = Math.sin(rot);
-    for (const cp of checkpoints) {
+    for (const cp of [...checkpoints, ...(jobTarget ? [{ ...jobTarget, job: true }] : [])]) {
       const dx = cp.x - car.x, dz = cp.z - car.z;
       let sx = (dx * cs - dz * sn) * k, sy = (dx * sn + dz * cs) * k;
       const d = Math.hypot(sx, sy);
-      ctx.fillStyle = '#3ae6ff';
+      ctx.fillStyle = cp.job ? '#ffdb50' : '#3ae6ff';
       if (d < R - 14) {
         ctx.beginPath();
         ctx.arc(R + sx, R + sy, 7, 0, Math.PI * 2);
