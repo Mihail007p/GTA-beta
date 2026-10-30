@@ -25,9 +25,11 @@ import { VehicleWorld } from './vehicles.js';
 import { makeEntrances, nearestEntrance, makeInteriorLayout, makeInteriorHash, nearInteriorExit, findReturnSpot } from './interiors.js';
 import { makeHomeState, nearestHomeInteraction, homeActionMode, toggleHomeItem, startHomePose, requestStand, stepHomePose } from './home-interactions.js';
 import { UI } from './ui.js';
-import { buyItem, buyOutfit, useItem, cookRecipe, stepNeeds, damage, acceptJob, completeJob, taxiDestination, TAXI_FARES } from './life.js';
+import { buyItem, buyOutfit, useItem, cookRecipe, stepNeeds, damage, acceptJob, completeJob, boardTaxi, completeTaxi, jobPoint, taxiDestination, TAXI_FARES } from './life.js';
 import { localHour, clockText, daylight } from './day-night.js';
 import { makeCrowd, stepCrowd, nearestCitizen } from './crowd.js';
+import { collideCrowd } from './crowd-collisions.js';
+import { syncTaxiPassenger, releaseTaxiPassenger, cancelTaxiPassenger } from './work-crowd.js';
 
 const ui = new UI();
 let save = loadSave();
@@ -386,10 +388,16 @@ function footAction() {
     if (item?.kind === 'shop') return { mode: 'shop-buy', item };
     return { mode: homeActionMode(item, interior.homeState), item };
   }
+  const job = save.life.job;
+  const workDoor = job ? entranceById.get(job.targetId) : null;
+  const workPoint = jobPoint(job, workDoor);
+  if (job?.type === 'cleanup' && workPoint && Math.hypot(hero.x - workPoint.x, hero.z - workPoint.z) <= 1.5) {
+    return { mode: 'job-clean', door: workDoor };
+  }
   const door = nearestEntrance(hero, entrances);
   const vehicle = vehicles.nearest(hero);
   const person = R.crowdActors.length ? nearestCitizen(hero, crowd) : null;
-  if (door && save.life.job?.targetId === door.id) return { mode: 'job-deliver', door };
+  if (door && job?.targetId === door.id && job.type !== 'taxi' && job.type !== 'cleanup') return { mode: 'job-deliver', door };
   if (person && (!door || Math.hypot(hero.x - person.x, hero.z - person.z) < Math.hypot(hero.x - door.x, hero.z - door.z)) &&
       (!vehicle || Math.hypot(hero.x - person.x, hero.z - person.z) < carEntryDistance(hero, vehicle.car, vehicle.def))) return { mode: 'citizen-talk', person };
   if (door && (!vehicle || Math.hypot(hero.x - door.x, hero.z - door.z) <= carEntryDistance(hero, vehicle.car, vehicle.def))) {
@@ -464,6 +472,18 @@ function exitInterior() {
   });
 }
 
+function drivingAction() {
+  const job = save.life.job;
+  if (job?.type !== 'taxi') return null;
+  const passenger = crowd?.people.find(p => p.taxiReserved);
+  if (passenger?.condition === 'taxi-board') return { mode: 'taxi-boarding' };
+  const door = entranceById.get(job.targetId);
+  if (!door || !carIsStopped(car) || Math.hypot(car.x - door.x, car.z - door.z) > 6) return null;
+  if (job.stage === 'pickup' && passenger?.condition === 'taxi-wait' && R.crowdActors.length) return { mode: 'taxi-board', door };
+  if (job.stage === 'drive' && passenger?.condition === 'taxi-seat') return { mode: 'taxi-drop', door };
+  return null;
+}
+
 // Действие на клавиатуре — E, на телефоне — контекстная кнопка.
 function toggleVehicle() {
   if (state !== 'play' || pendingEntry || roomTransition) return;
@@ -471,9 +491,10 @@ function toggleVehicle() {
     const action = footAction();
     if (action.mode === 'room-exit') { exitInterior(); return; }
     if (action.mode === 'shop-buy') { openLife('shop'); return; }
-    if (action.mode === 'job-deliver') {
-      const result = completeJob(save, action.door); ui.toast(result.message);
-      if (result.ok) { markDirty(); flushNow(); R.setJobTarget(null); }
+    if (action.mode === 'job-deliver' || action.mode === 'job-clean') {
+      const before = save.money, result = completeJob(save, action.door);
+      if (result.ok) { markDirty(); flushNow(); if (result.complete) { audio.money(); checkAffordable(before); } }
+      ui.toast(result.message);
       return;
     }
     if (action.mode === 'citizen-talk') {
@@ -504,6 +525,9 @@ function toggleVehicle() {
       return;
     }
     if (action.door) { enterInterior(action.door); return; }
+    if (save.life.job?.type === 'taxi' && save.life.job.stage === 'drive' && action.vehicle && action.vehicle.ref !== vehicles.current.ref) {
+      ui.toast('Пассажир ждёт в вашей машине. Сначала завершите или отмените поездку'); return;
+    }
     const result = vehicles.enter(action.vehicle);
     if (!result.ok) {
       ui.toast(result.reason === 'too-fast'
@@ -521,6 +545,18 @@ function toggleVehicle() {
       ui.toast('Водитель выходит из машины');
     } else finishVehicleEntry();
     return;
+  }
+  const taxi = drivingAction();
+  if (taxi?.mode === 'taxi-boarding') { ui.toast('Подождите, пассажир садится'); return; }
+  if (taxi?.mode === 'taxi-board') {
+    const result = boardTaxi(save.life, taxi.door);
+    if (result.ok) { stopParkedCar(car); markDirty(); flushNow(); }
+    ui.toast(result.message); return;
+  }
+  if (taxi?.mode === 'taxi-drop') {
+    const before = save.money, result = completeTaxi(save, taxi.door);
+    if (result.ok) { releaseTaxiPassenger(crowd, taxi.door); markDirty(); flushNow(); audio.money(); checkAffordable(before); }
+    ui.toast(result.message); return;
   }
   if (!carIsStopped(car)) { ui.toast('Сначала остановите машину'); return; }
   if (!R.heroActor || R.heroId !== save.selectedCharacter) {
@@ -609,7 +645,18 @@ function lifeAction(action, id) {
   else if (mode === 'shop' && action === 'job') result = acceptJob(save.life, id, interior?.door, entrances);
   else if (mode === 'bag' && action === 'use') result = useItem(save.life, id);
   else if (mode === 'bag' && action === 'taxi') { takeTaxi(id); return; }
-  else if (mode === 'bag' && action === 'cancel-job' && save.life.job) { save.life.job = null; result = { ok: true, message: 'Заказ отменён' }; }
+  else if (mode === 'bag' && action === 'cancel-job' && save.life.job) {
+    if (save.life.job.type === 'taxi') {
+      let spot = null;
+      if (save.life.job.stage === 'drive') {
+        stopParkedCar(car); vehicles.sync();
+        spot = findExitSpot(car, def, hash, traffic, vehicles.current.ref);
+        if (spot) spot.y = isOnRoad(city, spot.x, spot.z) ? 0 : 0.16;
+      }
+      cancelTaxiPassenger(crowd, spot);
+    }
+    save.life.job = null; result = { ok: true, message: 'Заказ отменён' };
+  }
   else if (mode === 'cook' && action === 'cook') result = cookRecipe(save.life, id, !!interior?.homeState?.stove);
   else if (mode === 'wardrobe' && action === 'wear' && save.life.outfits.includes(id)) {
     lifeChanging = true;
@@ -653,7 +700,7 @@ function enterFullscreen(explicit = false) {
       const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' })
         : el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : null;
       if (!el.requestFullscreen && !el.webkitRequestFullscreen) { if (explicit) denied(); }
-      else if (p && p.then) p.then(lockLandscape, denied);
+      else if (p && p.then) p.then(() => { lockLandscape(); syncFsButton(); }, denied);
     } catch (e) { denied(); }
   } else lockLandscape();
 }
@@ -797,8 +844,11 @@ function frame(dt, now) {
     worldMinute = minute; const hour = localHour(date); R.setWorldTime(hour);
     worldClock = (daylight(hour).day > 0.4 ? '☀ ' : '☾ ') + clockText(date);
   }
-  const target = save.life.job ? entranceById.get(save.life.job.targetId) : null;
-  R.setJobTarget(target || null);
+  const job = save.life.job;
+  const targetDoor = job ? entranceById.get(job.targetId) : null;
+  const target = jobPoint(job, targetDoor);
+  R.setJobTarget(target, job?.type === 'cleanup');
+  const passenger = syncTaxiPassenger(crowd, job, entranceById, car, def, playing && !interior && !roomTransition ? dt : 0);
   if (playing) {
     const rest = onFoot && interior?.homeState && hero.pose && !hero.pose.leaving && hero.pose.amount > 0.8 ? hero.pose.kind : null;
     stepNeeds(save.life, dt, { rest, starvationDamage: save.settings.starvationDamage });
@@ -816,16 +866,21 @@ function frame(dt, now) {
 
   if (driving) {
     inp = input.sample();
+    if (passenger?.condition === 'taxi-board') {
+      // Не уезжаем, пока модель пассажира подходит и садится.
+      stopParkedCar(car); inp = { ...inp, throttle: 0, brake: 0, handbrake: false, steer: 0 };
+    }
     R.moveCarCamera(inp.lookX, inp.lookY);
     if (inp.reset && !fx.wasReset) respawn();
     fx.wasReset = inp.reset;
     acc += dt;
     let steps = 0;
     while (acc >= PH.dt && steps < PH.maxStepsPerFrame) {
-      const vx0 = car.vx, vz0 = car.vz;
+      const vx0 = car.vx, vz0 = car.vz, previous = { x: car.x, z: car.z };
       stepCar(car, def, inp, PH.dt, { onRoad: isOnRoad(city, car.x, car.z) });
       const w = collideWorld(car, col, hash, PH);
       const t = collideTraffic(car, col, traffic, PH);
+      handleCitizenHits(collideCrowd(crowd, car, def, previous), true);
       const imp = Math.max(w.impact, t);
       if (imp > frameImpact) { frameImpact = imp; impVx = car.vx - vx0; impVz = car.vz - vz0; }
       acc -= PH.dt;
@@ -853,6 +908,21 @@ function frame(dt, now) {
     if (playing) {
       stepDriver(dt);
       stepCrowd(crowd, city, hash, onFoot ? hero : car, dt);
+      // Припаркованная машина тоже не прозрачна для прохожих.
+      if (onFoot) handleCitizenHits(collideCrowd(crowd, car, def), false);
+      // Машины трафика могут столкнуться с людьми на проезжей части. Проверяем
+      // только близкие пары; 24×4 дешёвых расстояния вместо лишних скелетов.
+      for (const t of traffic.cars) {
+        if (!t.alive || t.playerControlled || t.parked || t.noRender || t.speed <= 0.5) continue;
+        if (!crowd.people.some(p => p.alive && ['walk', 'return', 'taxi-wait'].includes(p.condition) &&
+          Math.abs(p.x - t.x) < 7 && Math.abs(p.z - t.z) < 7)) continue;
+        const h = t.visHeading ?? t.heading, vx = Math.cos(h) * t.speed, vz = Math.sin(h) * t.speed;
+        const moving = { x: t.x, z: t.z, heading: h, vx, vz, speed: t.speed };
+        const size = { length: t.length || (t.half || 1) * 2 + 1.9, width: t.width || 1.9 };
+        const hits = collideCrowd(crowd, moving, size, { x: t.x - vx * Math.min(dt, 0.05), z: t.z - vz * Math.min(dt, 0.05) });
+        if (hits.some(hit => hit.kind !== 'push')) { t.speed = Math.max(0, moving.speed); t.stunned = Math.max(t.stunned || 0, 1); }
+        handleCitizenHits(hits, false);
+      }
       if (onFoot && !pendingEntry && footHitCd <= 0) {
         const hit = traffic.cars.find(t => t.alive && !t.playerControlled && !t.noRender && Math.abs(t.speed) > 4 &&
           Math.hypot(t.x - hero.x, t.z - hero.z) < 4 && circleVsCar(hero.x, hero.z, HERO_RADIUS,
@@ -904,12 +974,14 @@ function frame(dt, now) {
     R.updateCheckpoints(g.checkpoints, time);
     R.updateParticles(dt);
   }
+  syncTaxiPassenger(crowd, save.life.job, entranceById, car, def, 0);
   R.updateCrowd(crowd, dt, playing && !interior && !roomTransition);
   R.adaptPerformance(dt);
   R.render();
 
   if (playing) {
     if (onFoot && !pendingEntry) ui.setVehicleAction(roomTransition ? 'none' : (roomAction || footAction()).mode);
+    else if (!onFoot) ui.setVehicleAction(drivingAction()?.mode || 'exit');
     ui.setLifeContext(!roomTransition && !hero.pose && interior?.homeState && roomAction?.item?.id === 'stove' ? 'cook'
       : !roomTransition && !hero.pose && interior?.homeState && roomAction?.item?.id === 'cabinet' ? 'wardrobe' : null);
     ui.setHomeTvAction(!!(interior?.homeState && hero.pose?.kind === 'sit' && !hero.pose.leaving && !roomTransition), !!interior?.homeState?.tv);
@@ -918,6 +990,9 @@ function frame(dt, now) {
     ui.updateHud({
       car: player, def, g, dt, onFoot, interior: interior?.layout.kind || null,
       money: save.money, life: save.life, clock: worldClock, jobTarget: target,
+      jobLabel: job?.type === 'taxi' ? (job.stage === 'pickup' ? 'ПАССАЖИР' : 'АДРЕС ТАКСИ')
+        : job?.type === 'cleanup' ? `МЕШОК ${job.index + 1}/3`
+        : job?.type === 'route' ? `ДОСТАВКА ${job.index + 1}/3` : 'ДОСТАВКА',
       nearest: interior ? null : nearestCheckpoint(g, player.x, player.z),
       camYaw: R.camYaw,
       fpsText: st.showFps ? `${Math.round(R.fps)} FPS · ${R.renderW}×${R.renderH} · ${R.drawCalls} dc` : '',
@@ -927,6 +1002,22 @@ function frame(dt, now) {
 }
 
 // ------------------------------------------------------------- СОБЫТИЯ --
+function handleCitizenHits(hits, byPlayer) {
+  const hit = hits.find(h => h.kind !== 'push');
+  if (!hit) return;
+  const passengerHit = hits.find(h => h.kind !== 'push' && h.person.taxiReserved);
+  if (passengerHit && save.life.job?.type === 'taxi' && save.life.job.stage === 'pickup') {
+    passengerHit.person.taxiReserved = false;
+    save.life.job = null; markDirty(); flushNow();
+    ui.toast('Пассажир пострадал: заказ такси отменён');
+  }
+  if (byPlayer) {
+    shake = Math.max(shake, Math.min(0.28, hit.impact * 0.015));
+    audio.impact(Math.min(10, hit.impact));
+    vibrate(Math.min(35, Math.round(12 + hit.impact)));
+  }
+}
+
 function onGameplay(res, dt) {
   if (res.money > 0) {
     const before = save.money;

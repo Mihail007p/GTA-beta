@@ -151,6 +151,7 @@ jobs:
           trap 'kill "$server" 2>/dev/null || true' EXIT
           cd game/tests/e2e
           npm run life
+          npm run work
       - name: Upload verified APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

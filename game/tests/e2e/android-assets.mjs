@@ -166,6 +166,39 @@ try {
   assert.equal(await back(), true); await wait(() => __game.state === 'play');
   console.log('  ✓ packaged seller, purchased outfit and animated character load without remote requests');
 
+  // Новая работа выполняется на ресурсах именно из APK; сохраняем её на середине.
+  await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу');
+  await tap('#vehicle-action'); await wait(() => !__game.interior && !__game.roomTransition);
+  await page.evaluate(() => {
+    const d = __game.entrances.find(x => x.kind === 'shop');
+    Object.assign(__game.hero, { x: d.x, z: d.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Войти в магазин');
+  await tap('#vehicle-action'); await wait(() => __game.interior?.layout.kind === 'shop' && !__game.roomTransition);
+  await page.evaluate(() => {
+    const i = __game.interior.layout.interactions[0];
+    Object.assign(__game.hero, { x: i.x, z: i.z, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Поговорить с продавцом');
+  await tap('#vehicle-action');
+  await page.locator('[data-action="job"][data-id="cleanup"]').scrollIntoViewIfNeeded();
+  await tap('[data-action="job"][data-id="cleanup"]');
+  assert.equal(await page.evaluate(() => __game.save.life.job?.type), 'cleanup');
+  await back(); await wait(() => __game.state === 'play');
+  await page.evaluate(() => Object.assign(__game.hero, { x: 0, z: 5.1, vx: 0, vz: 0, speed: 0 }));
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Выйти на улицу');
+  await tap('#vehicle-action'); await wait(() => !__game.interior && !__game.roomTransition);
+  await page.evaluate(() => {
+    const d = __game.entrances.find(x => x.id === __game.save.life.job.targetId);
+    Object.assign(__game.hero, { x: d.x + d.nx * 0.8, z: d.z + d.nz * 0.8, vx: 0, vz: 0, speed: 0 });
+  });
+  await wait(() => document.querySelector('#vehicle-action').getAttribute('aria-label') === 'Собрать мусор');
+  await tap('#vehicle-action');
+  await wait(() => __game.save.life.job?.type === 'cleanup' && __game.save.life.job.index === 1);
+  assert.equal(await page.evaluate(() => __game.save.life.completedJobs), 0, 'partial cleanup must not pay');
+  console.log('  ✓ packaged cleanup job accepts touch input and records the first of three pickups');
+
   await page.evaluate(() => { __game.save.money = 4321; window.__openStreetAndroidPause(); });
   await wait(() => __game.state === 'pause');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('openstreet.save.v1')).money), 4321);
@@ -173,10 +206,13 @@ try {
 
   await page.reload(); await wait(() => window.__game?.state === 'menu');
   assert.equal(await page.evaluate(() => __game.save.money), 4321, 'save survives reload on the same native origin');
+  assert.deepEqual(await page.evaluate(() => [__game.save.life.job?.type, __game.save.life.job?.index]), ['cleanup', 1], 'partial job survives native-origin reload');
   assert.equal(await page.evaluate(() => window.__swCalls), 0);
   assert.ok(loaded.has('game/assets/characters/hero-1.glb'));
   assert.ok(loaded.has('game/js/home-interactions.js'));
   assert.ok(loaded.has('game/js/life.js'));
+  assert.ok(loaded.has('game/js/crowd-collisions.js'));
+  assert.ok(loaded.has('game/js/work-crowd.js'));
   assert.ok(loaded.has('game/assets/characters/hero-1-smart.glb'));
   assert.ok(loaded.has('game/assets/characters/citizen-1.glb'));
   assert.ok(loaded.has('game/assets/cars/cayenne.glb'));

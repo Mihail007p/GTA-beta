@@ -2,7 +2,7 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
@@ -14,7 +14,7 @@ const FILES = [
   './js/car-model.js', './js/renderer.js', './js/audio.js', './js/input.js', './js/ui.js', './js/traffic-types.js',
   './js/characters.js', './js/pedestrian.js', './js/vehicles.js', './js/foot-input.js', './js/hero-model.js',
   './js/look-controls.js', './js/interiors.js', './js/interior-render.js', './js/home-interactions.js',
-  './js/life.js', './js/day-night.js', './js/crowd.js',
+  './js/life.js', './js/day-night.js', './js/crowd.js', './js/crowd-collisions.js', './js/work-crowd.js',
   './vendor/GLTFLoader.js', './vendor/BufferGeometryUtils.js', './vendor/meshopt_decoder.module.js',
   // модели (~3.4 МБ): машины гаража и трафик — чтобы гараж работал и без интернета
   './assets/cars/cayenne.glb', './assets/cars/gt3.glb', './assets/cars/f458.glb', './assets/cars/cgt.glb',
@@ -23,16 +23,29 @@ const FILES = [
   './assets/characters/hero-1-smart.glb', './assets/characters/hero-2-smart.glb',
   './assets/characters/citizen-1.glb', './assets/characters/citizen-2.glb',
 ];
+// Только более старые числовые версии этой области. Новый worker может уже
+// устанавливать следующий кэш, пока старый ещё обслуживает открытую вкладку.
+const currentNumber = Number(CACHE_VERSION.slice(1));
+const clearOldCaches = () => caches.keys().then(keys => Promise.all(
+  keys.filter(k => {
+    if (!k.startsWith(CACHE_PREFIX)) return false;
+    const match = /^v(\d+)$/.exec(k.slice(CACHE_PREFIX.length));
+    return match && Number(match[1]) < currentNumber;
+  }).map(k => caches.delete(k))
+));
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith(CACHE_PREFIX) && k !== CACHE).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
+  e.waitUntil(clearOldCaches().then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  // Старый worker может ещё открывать свой кэш, пока обновляемая вкладка
+  // догружает модули. После следующей навигации повторяем уборку, когда старая
+  // страница уже закрыта; чужие области и текущий кэш не затрагиваются.
+  if (req.mode === 'navigate') e.waitUntil(new Promise(resolve => setTimeout(resolve, 1000)).then(clearOldCaches));
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     let hit = await cache.match(req, { ignoreSearch: true });
     // На обычном сервере игра также открывается по /game/; для офлайна

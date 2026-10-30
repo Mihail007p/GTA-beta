@@ -176,7 +176,7 @@ try {
   await tap('#btn-pause'); await wait(() => !!navigator.serviceWorker.controller);
   const cached = await page.evaluate(async () => {
     const r = await navigator.serviceWorker.ready;
-    const cache = await caches.open(`openstreet:${r.scope}:v15`);
+    const cache = await caches.open(`openstreet:${r.scope}:v16`);
     return Promise.all(['js/life.js', 'js/crowd.js', 'js/day-night.js', 'assets/characters/hero-1-smart.glb', 'assets/characters/citizen-1.glb'].map(async u => !!(await cache.match(u))));
   });
   assert.deepEqual(cached, [true, true, true, true, true]);

@@ -71,6 +71,7 @@ function idleClip(bones) {
 // Бёдра идут вперёд, голени опускаются к полу; при лежании всё тело
 // поворачивается рендерером на кровать, а руки остаются вдоль корпуса.
 function furnitureClip(kind, bones) {
+  const seated = kind === 'sit' || kind === 'car-sit';
   const names = ['pelvis', 'thigh_l', 'calf_l', 'foot_l', 'ball_l', 'thigh_r', 'calf_r', 'foot_r', 'ball_r',
     'spine_01', 'spine_02', 'spine_03', 'clavicle_l', 'clavicle_r', 'upperarm_l', 'lowerarm_l',
     'hand_l', 'upperarm_r', 'lowerarm_r', 'hand_r', 'neck_01', 'head'];
@@ -79,11 +80,12 @@ function furnitureClip(kind, bones) {
     if (!present.has(name)) continue;
     const q = new THREE.Quaternion();
     const side = name.endsWith('_l') ? -1 : 1;
-    if (name.startsWith('upperarm_')) q.setFromEuler(new THREE.Euler(kind === 'sit' ? -0.28 : 0, 0, side * (kind === 'sit' ? 0.47 : 0.55), 'XZY'));
-    if (name.startsWith('lowerarm_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), kind === 'sit' ? -0.25 : 0.9);
-    if (kind === 'sit' && name.startsWith('thigh_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -1.38);
-    if (kind === 'sit' && name.startsWith('calf_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 1.38);
-    if (kind === 'sit' && name === 'spine_01') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.06);
+    if (name.startsWith('upperarm_')) q.setFromEuler(new THREE.Euler(seated ? -0.28 : 0, 0, side * (seated ? 0.47 : 0.55), 'XZY'));
+    if (name.startsWith('lowerarm_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), seated ? -0.25 : 0.9);
+    if (seated && name.startsWith('thigh_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -1.38);
+    // В низкой машине голени вытянуты вперёд, а не проходят через пол.
+    if (seated && name.startsWith('calf_')) q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), kind === 'car-sit' ? 0.15 : 1.38);
+    if (seated && name === 'spine_01') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.06);
     const breathing = q.clone();
     if (name === 'spine_02') breathing.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.01));
     tracks.push(new THREE.QuaternionKeyframeTrack(`${name}.quaternion`, [0, 1, 2], [...q.toArray(), ...breathing.toArray(), ...q.toArray()]));
@@ -125,6 +127,7 @@ export async function createHero(def) {
     walk: mixer.clipAction(motionClip('walk', motion.walk, bones)),
     run: mixer.clipAction(motionClip('run', motion.run, bones)),
     sit: mixer.clipAction(furnitureClip('sit', bones)),
+    'car-sit': mixer.clipAction(furnitureClip('car-sit', bones)),
     lie: mixer.clipAction(furnitureClip('lie', bones)),
   };
   actions.idle.play();
@@ -138,7 +141,7 @@ export async function createHero(def) {
         actions[next].reset().fadeIn(0.22).play();
         active = next;
       }
-      mixer.timeScale = next === 'idle' || next === 'sit' || next === 'lie' ? 1 : next === 'run'
+      mixer.timeScale = next === 'idle' || next === 'sit' || next === 'car-sit' || next === 'lie' ? 1 : next === 'run'
         ? THREE.MathUtils.clamp(speed / 4.1, 0.72, 1.25)
         : THREE.MathUtils.clamp(speed / 1.75, 0.55, 1.2);
       mixer.update(dt);
@@ -201,8 +204,8 @@ export function cloneHeroForDriver(source) {
   let active = 'walk';
   return {
     root,
-    update(dt, speed, running) {
-      const next = speed < 0.16 ? 'idle' : running ? 'run' : 'walk';
+    update(dt, speed, running, pose = null) {
+      const next = pose?.kind === 'car-sit' ? 'car-sit' : pose?.kind === 'sit' ? 'sit' : speed < 0.16 ? 'idle' : running ? 'run' : 'walk';
       if (next !== active) {
         actions[active].fadeOut(0.15);
         actions[next].reset().fadeIn(0.15).play();
