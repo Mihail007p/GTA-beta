@@ -185,11 +185,21 @@ export class Renderer {
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.22; group.add(ring);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 10, 8, 1, true),
       new THREE.MeshBasicMaterial({ color: 0xffdd61, transparent: true, opacity: 0.38, depthWrite: false, toneMapped: false }));
-    beam.position.y = 5.2; group.add(beam); group.visible = false;
+    beam.position.y = 5.2; group.add(beam);
+    // Небольшой мешок для задания уборщика: не просто текстовый чекпоинт.
+    const bag = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45, 1),
+      new THREE.MeshStandardMaterial({ color: 0x20272a, roughness: 0.85 }));
+    body.scale.set(0.86, 1.05, 0.75); body.position.y = 0.58; bag.add(body);
+    const knot = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.26, 7),
+      new THREE.MeshStandardMaterial({ color: 0x31383a, roughness: 0.85 }));
+    knot.position.y = 1.05; bag.add(knot); bag.visible = false; group.add(bag);
+    this.workBag = bag; group.visible = false;
     this.scene.add(group); this.jobMarker = group;
   }
-  setJobTarget(door) {
+  setJobTarget(door, showBag = false) {
     this.jobMarker.visible = !!door;
+    this.workBag.visible = !!door && showBag;
     if (door) this.jobMarker.position.set(door.x, 0, door.z);
   }
 
@@ -915,8 +925,13 @@ export class Renderer {
       actor.root.visible = !!(visible && person?.alive && dx * dx + dz * dz < 3600 && dx * direction.x + dz * direction.z > -3);
       if (!actor.root.visible) continue;
       actor.root.position.set(person.x, person.y || 0, person.z);
+      actor.root.rotation.order = 'YXZ';
       actor.root.rotation.y = Math.PI / 2 - person.heading;
-      actor.update(dt, person.speed, false);
+      actor.root.rotation.x = -Math.PI / 2 * (person.fall || 0);
+      actor.root.rotation.z = 0;
+      const seated = person.condition === 'taxi-seat' || (person.condition === 'taxi-board' && person.boardAge > 0.7) ||
+        (person.condition === 'taxi-exit' && person.exitAge < 0.2);
+      actor.update(dt, person.speed, false, seated ? { kind: 'car-sit' } : null);
     }
     if (this.vendorActor && this.inInterior) this.vendorActor.update(dt, 0, false);
   }

@@ -7,7 +7,7 @@ import { CARS } from './cars.js';
 import { CHARACTERS } from './characters.js';
 import { CONFIG, MS_TO_KMH } from './config.js';
 import { makeCarState, stepCar } from './car-physics.js';
-import { ITEMS, OUTFITS, JOBS, RECIPES, TAXI_FARES } from './life.js';
+import { ITEMS, OUTFITS, JOBS, RECIPES, TAXI_FARES, jobInstruction } from './life.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
@@ -221,6 +221,10 @@ export class UI {
       'room-exit': ['ВЫЙТИ<br><span>НА УЛИЦУ</span>', 'Выйти на улицу'],
       'shop-buy': ['ПРОДАВЕЦ<br><span>ПОКУПКИ И ЗАКАЗЫ</span>', 'Поговорить с продавцом'],
       'job-deliver': ['ДОСТАВИТЬ<br><span>ЗАКАЗ</span>', 'Доставить заказ'],
+      'job-clean': ['СОБРАТЬ<br><span>МУСОР</span>', 'Собрать мусор'],
+      'taxi-board': ['ПОСАДИТЬ<br><span>ПАССАЖИРА</span>', 'Посадить пассажира'],
+      'taxi-boarding': ['САДИТСЯ<br><span>ПОДОЖДИТЕ</span>', 'Пассажир садится'],
+      'taxi-drop': ['ВЫСАДИТЬ<br><span>ПАССАЖИРА</span>', 'Высадить пассажира'],
       'citizen-talk': ['ПРИВЕТ<br><span>ПРОХОЖЕМУ</span>', 'Поговорить с прохожим'],
       'home-sit': ['СЕСТЬ<br><span>НА ДИВАН</span>', 'Сесть на диван'],
       'home-lie': ['ЛЕЧЬ<br><span>НА КРОВАТЬ</span>', 'Лечь на кровать'],
@@ -299,13 +303,13 @@ export class UI {
         const item = ITEMS[id]; row(item.name, `${item.description} · в рюкзаке: ${life.inventory[id]}`, `КУПИТЬ $${item.price}`, 'buy', id);
       }
       row(OUTFITS.smart.name, 'Одежда для обоих героев · надеть у шкафа', life.outfits.includes('smart') ? 'КУПЛЕНО' : `КУПИТЬ $${OUTFITS.smart.price}`, 'buy-outfit', 'smart', life.outfits.includes('smart'));
-      for (const [id, job] of Object.entries(JOBS)) row(job.name, 'Доставьте посылку к жёлтой метке', `ВЗЯТЬ $${job.reward}`, 'job', id, !!life.job);
+      for (const [id, job] of Object.entries(JOBS)) row(job.name, job.description, `ВЗЯТЬ $${job.reward}`, 'job', id, !!life.job);
     } else if (mode === 'bag') {
       for (const [id, item] of Object.entries(ITEMS)) {
         const usable = !!(item.satiety || item.health);
         row(`${item.name} × ${life.inventory[id]}`, item.description, id === 'medkit' ? 'ЛЕЧИТЬСЯ' : 'СЪЕСТЬ', usable ? 'use' : null, id, !life.inventory[id]);
       }
-      if (life.job) row('Активный заказ', `${JOBS[life.job.type].name} · жёлтая метка на карте`, 'ОТМЕНИТЬ', 'cancel-job');
+      if (life.job) row('Активный заказ', `${JOBS[life.job.type].name} · ${jobInstruction(life.job)}`, 'ОТМЕНИТЬ', 'cancel-job');
       else row('Заказы', 'Подойдите к продавцу в магазине', '', null);
       const where = context.canTaxi ? 'Быстрый перенос без анимации поездки' : 'Доступно пешком на улице';
       row('Такси к дому', where, `ВЫЗВАТЬ $${TAXI_FARES.home}`, 'taxi', 'home', !context.canTaxi);
@@ -458,7 +462,7 @@ export class UI {
       if (satiety !== L.satiety) { L.satiety = satiety; $('satiety-value').textContent = '◒ ' + satiety; }
       if (s.clock !== L.clock) { L.clock = s.clock; $('clock-value').textContent = s.clock; }
       const cpTxt = s.interior ? (s.interior === 'shop' ? 'МАГАЗИН · ВЫХОД У ДВЕРИ' : 'ДОМ · ВЫХОД У ДВЕРИ')
-        : s.jobTarget ? 'ДОСТАВКА ' + Math.round(Math.hypot(s.jobTarget.x - car.x, s.jobTarget.z - car.z)) + ' м' : s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
+        : s.jobTarget ? (s.jobLabel || 'ДОСТАВКА') + ' ' + Math.round(Math.hypot(s.jobTarget.x - car.x, s.jobTarget.z - car.z)) + ' м' : s.onFoot ? 'ЧЕКПОИНТЫ — НА МАШИНЕ' : s.nearest ? 'ЧЕКПОИНТ ' + Math.round(s.nearest.dist) + ' м' : '';
       if (cpTxt !== L.cpTxt) { L.cpTxt = cpTxt; $('cp-dist').textContent = cpTxt; }
 
       const d = g.drift;

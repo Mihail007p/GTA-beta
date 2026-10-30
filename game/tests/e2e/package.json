@@ -12,7 +12,7 @@
     "settings": "node settings.mjs",
     "reset": "node reset-confirmation.mjs",
     "screens": "node screens.mjs",
-    "all": "node run.mjs basic && node touch.mjs && node fullscreen.mjs && node fullscreen-fallback.mjs && node flow.mjs && node settings.mjs && node reset-confirmation.mjs && node character.mjs && node hijack.mjs && node interiors.mjs && node home-interactions.mjs && node life.mjs && node githack-path.mjs && node screens.mjs && node progs.mjs && node traffic.mjs && node cars.mjs",
+    "all": "node run.mjs basic && node touch.mjs && node fullscreen.mjs && node fullscreen-fallback.mjs && node flow.mjs && node settings.mjs && node reset-confirmation.mjs && node character.mjs && node hijack.mjs && node interiors.mjs && node home-interactions.mjs && node life.mjs && node work.mjs && node githack-path.mjs && node screens.mjs && node progs.mjs && node traffic.mjs && node cars.mjs",
     "fullscreen": "node fullscreen.mjs",
     "cars": "node cars.mjs",
     "traffic": "node traffic.mjs",
@@ -25,7 +25,8 @@
     "home": "node home-interactions.mjs",
     "android-assets": "node android-assets.mjs",
     "fullscreen-fallback": "node fullscreen-fallback.mjs",
-    "life": "node life.mjs"
+    "life": "node life.mjs",
+    "work": "node work.mjs"
   },
   "devDependencies": {
     "playwright": "1.48.2"

@@ -17,12 +17,33 @@ export const OUTFITS = Object.freeze({
   smart: { name: 'Нарядный костюм', price: 250 },
 });
 export const JOBS = Object.freeze({
-  home: { name: 'Доставка в дом', kind: 'home', reward: 220 },
-  shop: { name: 'Поставка в магазин', kind: 'shop', reward: 180 },
+  home: { name: 'Доставка в дом', kind: 'home', reward: 220, description: 'Отнесите посылку к жёлтой метке' },
+  shop: { name: 'Поставка в магазин', kind: 'shop', reward: 180, description: 'Отнесите товар к жёлтой метке' },
+  taxi: { name: 'Таксист', kind: 'home', reward: 380, description: 'На своей или угнанной машине заберите пассажира и отвезите его' },
+  route: { name: 'Курьер: три адреса', kind: 'home', reward: 650, description: 'Доставьте три посылки по очереди' },
+  cleanup: { name: 'Уборка улиц', kind: null, reward: 360, description: 'Пешком соберите три мешка у жёлтых меток' },
 });
 const MAX_ITEMS = 99;
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const bounded = (n, min, max, fallback) => typeof n === 'number' && Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+const validDoorId = id => Number.isInteger(id) && id >= 0 && id <= 99999;
+
+function readJob(raw) {
+  if (!raw || typeof raw !== 'object' || !own(JOBS, raw.type) || !validDoorId(raw.targetId)) return null;
+  if (raw.type === 'taxi') {
+    if (!validDoorId(raw.pickupId) || !validDoorId(raw.destinationId) || raw.pickupId === raw.destinationId ||
+        !['pickup', 'drive'].includes(raw.stage) || raw.targetId !== (raw.stage === 'pickup' ? raw.pickupId : raw.destinationId)) return null;
+    return { type: 'taxi', targetId: raw.targetId, pickupId: raw.pickupId, destinationId: raw.destinationId, stage: raw.stage };
+  }
+  if (raw.type === 'route' || raw.type === 'cleanup') {
+    if (!Array.isArray(raw.targets) || raw.targets.length !== 3 || !raw.targets.every(validDoorId) ||
+        new Set(raw.targets).size !== 3 || !Number.isInteger(raw.index) || raw.index < 0 || raw.index > 2 ||
+        raw.targetId !== raw.targets[raw.index]) return null;
+    return { type: raw.type, targetId: raw.targetId, targets: raw.targets.slice(), index: raw.index };
+  }
+  // Заказы v0.15 не содержали дополнительных полей.
+  return { type: raw.type, targetId: raw.targetId };
+}
 
 export function makeLife(saved) {
   const raw = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : null;
@@ -34,10 +55,7 @@ export function makeLife(saved) {
   }
   const owned = ['street'];
   if (Array.isArray(raw?.outfits) && raw.outfits.includes('smart')) owned.push('smart');
-  let job = null;
-  if (raw?.job && own(JOBS, raw.job.type) && Number.isInteger(raw.job.targetId) && raw.job.targetId >= 0 && raw.job.targetId <= 99999) {
-    job = { type: raw.job.type, targetId: raw.job.targetId };
-  }
+  const job = readJob(raw?.job);
   return {
     health: bounded(raw?.health, 0, 100, 100),
     satiety: bounded(raw?.satiety, 0, 100, 100),
@@ -121,20 +139,88 @@ export function chooseJobTarget(type, origin, entrances) {
   if (candidates.length) return candidates[(origin.id + type.length) % Math.min(6, candidates.length)].d;
   return entrances.find(d => d.kind === job.kind && d.id !== origin.id) || null;
 }
+// Несколько разных, проходимых адресов; каждый следующий расположен недалеко
+// от предыдущего. Список и текущий шаг сохраняются, чтобы перезапуск не платил
+// повторно и не сбрасывал уже выполненные этапы.
+export function chooseWorkStops(type, origin, entrances) {
+  const job = own(JOBS, type) ? JOBS[type] : null;
+  if (!job || !origin || !Array.isArray(entrances)) return [];
+  const used = new Set([origin.id]), result = [];
+  let from = origin;
+  for (let step = 0; step < 3; step++) {
+    const pool = entrances.filter(d => !used.has(d.id) && (!job.kind || d.kind === job.kind))
+      .map(d => ({ d, dist: Math.hypot(d.x - from.x, d.z - from.z) }))
+      .sort((a, b) => a.dist - b.dist || a.d.id - b.d.id);
+    const near = pool.filter(x => x.dist >= 35 && x.dist <= 140);
+    const choices = near.length ? near : pool;
+    if (!choices.length) return [];
+    const pick = choices[(origin.id + step * 7) % Math.min(5, choices.length)].d;
+    result.push(pick); used.add(pick.id); from = pick;
+  }
+  return result;
+}
+
 export function acceptJob(life, type, origin, entrances) {
   if (life.job) return { ok: false, message: 'Сначала выполните или отмените текущий заказ' };
+  if (!own(JOBS, type) || !origin || !Array.isArray(entrances)) return { ok: false, message: 'Сейчас нет подходящего задания' };
+  if (type === 'route' || type === 'cleanup') {
+    const targets = chooseWorkStops(type, origin, entrances).map(d => d.id);
+    if (targets.length !== 3) return { ok: false, message: 'Сейчас нет подходящих адресов' };
+    life.job = { type, targets, index: 0, targetId: targets[0] };
+    return { ok: true, message: type === 'cleanup' ? 'Работа принята. Соберите три мешка у жёлтых меток' : 'Маршрут принят. Доставьте три посылки по жёлтым меткам' };
+  }
   const target = chooseJobTarget(type, origin, entrances);
   if (!target) return { ok: false, message: 'Сейчас нет подходящего адреса' };
+  if (type === 'taxi') {
+    const destination = chooseJobTarget('taxi', target, entrances);
+    if (!destination || destination.id === target.id) return { ok: false, message: 'Сейчас нет подходящего маршрута' };
+    life.job = { type, targetId: target.id, pickupId: target.id, destinationId: destination.id, stage: 'pickup' };
+    return { ok: true, message: 'Заказ такси принят. Подъедьте на машине к пассажиру' };
+  }
   life.job = { type, targetId: target.id };
   return { ok: true, message: 'Заказ принят. Жёлтая метка на карте — адрес доставки' };
 }
-export function completeJob(save, door) {
-  const job = save.life.job;
-  if (!job || job.targetId !== door?.id || !own(JOBS, job.type)) return { ok: false, message: 'Это не адрес доставки' };
+
+export function jobPoint(job, door) {
+  if (!job || !door) return null;
+  // Мешок расположен у выхода на тротуар, а не внутри стены или помещения.
+  return job.type === 'cleanup' ? { x: door.x + door.nx * 0.8, z: door.z + door.nz * 0.8 } : door;
+}
+export function jobInstruction(job) {
+  if (!job || !own(JOBS, job.type)) return '';
+  if (job.type === 'taxi') return job.stage === 'pickup' ? 'На машине подъедьте к пассажиру' : 'Отвезите пассажира к жёлтой метке';
+  if (job.type === 'route') return `Доставка ${job.index + 1}/3 · жёлтая метка`;
+  if (job.type === 'cleanup') return `Мешок ${job.index + 1}/3 · подойдите пешком`;
+  return 'Доставьте заказ к жёлтой метке';
+}
+export function boardTaxi(life, door) {
+  const job = life.job;
+  if (!job || job.type !== 'taxi' || job.stage !== 'pickup' || job.targetId !== door?.id) return { ok: false, message: 'Пассажир не здесь' };
+  job.stage = 'drive'; job.targetId = job.destinationId;
+  return { ok: true, message: 'Пассажир садится. Отвезите его к жёлтой метке' };
+}
+function finishWork(save, job) {
   const reward = JOBS[job.type].reward;
   save.money = Math.round((save.money + reward) * 100) / 100;
   save.life.job = null; save.life.completedJobs++;
-  return { ok: true, message: `Доставка выполнена! +$ ${reward}` };
+  return { ok: true, complete: true, message: `Работа выполнена! +$ ${reward}` };
+}
+export function completeTaxi(save, door) {
+  const job = save.life.job;
+  if (!job || job.type !== 'taxi' || job.stage !== 'drive' || job.targetId !== door?.id) return { ok: false, message: 'Это не адрес пассажира' };
+  return finishWork(save, job);
+}
+export function completeJob(save, door) {
+  const job = save.life.job;
+  if (!job || job.type === 'taxi' || job.targetId !== door?.id || !own(JOBS, job.type)) return { ok: false, message: 'Это не адрес задания' };
+  if (job.type === 'route' || job.type === 'cleanup') {
+    const completed = job.index + 1;
+    if (completed < job.targets.length) {
+      job.index = completed; job.targetId = job.targets[completed];
+      return { ok: true, complete: false, message: `${job.type === 'route' ? 'Доставлено' : 'Собрано'} ${completed}/3. Следующая жёлтая метка на карте` };
+    }
+  }
+  return finishWork(save, job);
 }
 
 // Честный быстрый трансфер: не симулируем поездку, перемещаем игрока после

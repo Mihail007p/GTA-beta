@@ -70,7 +70,7 @@ check('в меню без полного экрана — кнопка «На в
 await page.screenshot({ path: OUT + 'fs_menu.png' });
 const n1 = await page.evaluate(() => window.__fs.length);
 await tap('#btn-fs');
-await sleep(600);
+await page.waitForFunction(() => !document.fullscreenElement || document.getElementById('btn-fs').classList.contains('hidden'), null, { timeout: 10000 }).catch(() => {});
 const s4 = await page.evaluate((n1) => ({ newCall: window.__fs.slice(n1), fs: !!document.fullscreenElement, btn: !document.getElementById('btn-fs').classList.contains('hidden') }), n1);
 check('кнопка → полный экран (в жесте), кнопка прячется', s4.newCall.length === 1 && s4.newCall[0].active === true && (s4.fs ? !s4.btn : true), JSON.stringify(s4));
 // настройки: кнопки в углу нет (там свой заголовок)
