@@ -176,10 +176,12 @@ try {
   await tap('#btn-pause'); await wait(() => !!navigator.serviceWorker.controller);
   const cached = await page.evaluate(async () => {
     const r = await navigator.serviceWorker.ready;
-    const cache = await caches.open(`openstreet:${r.scope}:v16`);
-    return Promise.all(['js/life.js', 'js/crowd.js', 'js/day-night.js', 'assets/characters/hero-1-smart.glb', 'assets/characters/citizen-1.glb'].map(async u => !!(await cache.match(u))));
+    const source = await (await fetch('sw.js', { cache: 'no-store' })).text();
+    const version = source.match(/const CACHE_VERSION = '([^']+)'/)?.[1];
+    const cache = await caches.open(`openstreet:${r.scope}:${version}`);
+    return Promise.all(['js/life.js', 'js/crowd.js', 'js/day-night.js', 'icons/icon-512.png', 'assets/characters/hero-1-smart.glb', 'assets/characters/citizen-1.glb'].map(async u => !!(await cache.match(u))));
   });
-  assert.deepEqual(cached, [true, true, true, true, true]);
+  assert.deepEqual(cached, [true, true, true, true, true, true]);
   await ctx.setOffline(true); await page.reload(); await wait(() => window.__game?.state === 'menu' && __game.R.heroOutfit === 'smart', null, 150000);
   assert.deepEqual(await page.evaluate(() => [__game.save.money, __game.save.bestScore, __game.save.life.outfit, __game.save.life.completedJobs, __game.save.settings.starvationDamage]), [760, 4321, 'smart', 1, true]);
   await tap('#btn-play'); await wait(() => __game.state === 'play' && __game.R.crowdActors.length === 4 && __game.R.heroVisible);

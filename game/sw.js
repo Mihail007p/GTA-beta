@@ -2,7 +2,7 @@
 // Стратегия: отдаём из кэша мгновенно, в фоне обновляем файл с сервера.
 // Кэши привязаны к области приложения: на общих хостингах нельзя удалять
 // файлы других проектов или других установок игры.
-const CACHE_VERSION = 'v16';
+const CACHE_VERSION = 'v17';
 const CACHE_PREFIX = `openstreet:${self.registration.scope}:`;
 const CACHE = CACHE_PREFIX + CACHE_VERSION;
 const FILES = [
