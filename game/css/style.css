@@ -175,7 +175,25 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
   padding: 16px calc(16px + var(--safe-r)) 16px calc(16px + var(--safe-l));
 }
 .screen.transparent { background: linear-gradient(90deg, rgba(4,6,12,0.0) 40%, rgba(4,6,12,0.75) 100%); }
-#loading { background: #070a12; flex-direction: column; gap: 18px; }
+#loading {
+  background: radial-gradient(ellipse at 50% 36%, #141e36 0%, #070a12 72%);
+  flex-direction: column;
+  gap: 14px;
+}
+.load-cover {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  object-fit: cover;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.65), 0 0 26px rgba(58, 230, 255, 0.22);
+}
+@media (max-height: 380px) {
+  #loading { gap: 10px; }
+  .load-cover { width: 68px; height: 68px; border-radius: 16px; }
+  #loading .logo { font-size: 38px; }
+}
 .logo { font-size: 52px; font-weight: 900; font-style: italic; letter-spacing: 2px; }
 .logo span { color: var(--accent); margin-left: 8px; }
 .logo.small { font-size: 38px; }

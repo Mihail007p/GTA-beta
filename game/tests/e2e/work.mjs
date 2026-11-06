@@ -251,10 +251,13 @@ try {
 
   await tap('#btn-pause'); await wait(() => !!navigator.serviceWorker.controller);
   const cached = await page.evaluate(async () => {
-    const r = await navigator.serviceWorker.ready, cache = await caches.open(`openstreet:${r.scope}:v16`);
-    return Promise.all(['js/crowd-collisions.js', 'js/work-crowd.js'].map(async u => !!(await cache.match(u))));
+    const r = await navigator.serviceWorker.ready;
+    const source = await (await fetch('sw.js', { cache: 'no-store' })).text();
+    const version = source.match(/const CACHE_VERSION = '([^']+)'/)?.[1];
+    const cache = await caches.open(`openstreet:${r.scope}:${version}`);
+    return Promise.all(['js/crowd-collisions.js', 'js/work-crowd.js', 'icons/icon-512.png'].map(async u => !!(await cache.match(u))));
   });
-  assert.deepEqual(cached, [true, true]);
+  assert.deepEqual(cached, [true, true, true]);
   await ctx.setOffline(true); await page.reload(); await wait(() => window.__game?.state === 'menu');
   assert.equal(await page.evaluate(() => __game.save.life.completedJobs), 3);
   assert.ok(await page.evaluate(() => __game.save.money >= 500 + 380 + 650 + 360));

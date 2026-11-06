@@ -9,7 +9,9 @@
   <meta name="screen-orientation" content="landscape">
   <title>Open Street — свободная езда по городу</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -67,6 +69,7 @@
 
   <!-- ========================== ЭКРАНЫ ========================== -->
   <div id="loading" class="screen">
+    <img class="load-cover" src="icons/icon-512.png" width="96" height="96" alt="" draggable="false">
     <div class="logo">OPEN<span>STREET</span></div>
     <div class="load-bar"><div id="load-fill"></div></div>
     <div id="load-text">Загрузка…</div>
